@@ -10,15 +10,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loft-sh/devpod/pkg/devcontainer/config"
-	"github.com/loft-sh/devpod/pkg/driver"
-	"github.com/loft-sh/devpod/pkg/driver/drivercreate"
-	"github.com/loft-sh/devpod/pkg/encoding"
-	"github.com/loft-sh/devpod/pkg/language"
-	provider2 "github.com/loft-sh/devpod/pkg/provider"
 	"github.com/loft-sh/log"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"github.com/skevetter/devpod/pkg/devcontainer/config"
+	"github.com/skevetter/devpod/pkg/driver"
+	"github.com/skevetter/devpod/pkg/driver/drivercreate"
+	"github.com/skevetter/devpod/pkg/encoding"
+	"github.com/skevetter/devpod/pkg/language"
+	provider2 "github.com/skevetter/devpod/pkg/provider"
 )
 
 type Runner interface {
@@ -99,7 +99,7 @@ func (r *runner) Up(ctx context.Context, options UpOptions, timeout time.Duratio
 	defer cleanupBuildInformation(substitutedConfig.Config)
 
 	// do not run initialize command in platform mode
-	if !options.CLIOptions.Platform.Enabled {
+	if !options.Platform.Enabled {
 		if err := runInitializeCommand(r.LocalWorkspaceFolder, substitutedConfig.Config, options.InitEnv, r.Log); err != nil {
 			return nil, err
 		}
@@ -212,8 +212,8 @@ func runInitializeCommand(
 		log.Infof("Running initializeCommand from devcontainer.json: '%s'", strings.Join(args, " "))
 		writer := log.Writer(logrus.InfoLevel, false)
 		errwriter := log.Writer(logrus.ErrorLevel, false)
-		defer writer.Close()
-		defer errwriter.Close()
+		defer func() { _ = writer.Close() }()
+		defer func() { _ = errwriter.Close() }()
 
 		cmd := exec.Command(args[0], args[1:]...)
 		env := cmd.Environ()

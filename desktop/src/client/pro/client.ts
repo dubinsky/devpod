@@ -7,7 +7,7 @@ import { ManagementV1ProjectClusters } from "@loft-enterprise/client/gen/models/
 import { ManagementV1ProjectTemplates } from "@loft-enterprise/client/gen/models/managementV1ProjectTemplates"
 import { ManagementV1Self } from "@loft-enterprise/client/gen/models/managementV1Self"
 import { ManagementV1UserProfile } from "@loft-enterprise/client/gen/models/managementV1UserProfile"
-import { Result, ResultError, Return, isError, sleep } from "../../lib"
+import { Result, ResultError, Return, isError } from "../../lib"
 import {
   TGitCredentialHelperData,
   TImportWorkspaceConfig,
@@ -199,6 +199,7 @@ export class DaemonClient extends ProClient {
       }
 
       const json: T = await res.json().catch(() => "")
+
       return Return.Value(json)
     } catch (e) {
       return this.handleError(e, "unable to get resource")
@@ -254,7 +255,12 @@ export class DaemonClient extends ProClient {
       details.push("Platform is offline")
     }
 
-    return Return.Value({ healthy, details, loginRequired: status.loginRequired, online: status.online })
+    return Return.Value({
+      healthy,
+      details,
+      loginRequired: status.loginRequired,
+      online: status.online,
+    })
   }
 
   public watchWorkspaces(
@@ -369,7 +375,7 @@ class WorkspaceWatcher {
       this.reader?.cancel().catch((err) => {
         console.debug("cancel failed", err)
       })
-    } catch(err) {
+    } catch (err) {
       console.error(err)
     }
     this.reader = undefined
@@ -398,16 +404,17 @@ class WorkspaceWatcher {
           globalClient.log("info", `[${this.hostID}] watch workspaces error: ${err}`)
         })
         .finally(async () => {
-          if (!this.abortController.signal.aborted && !(await this.reader?.closed)) {
+          if (!this.abortController.signal.aborted && this.reader) {
             // Either the webview or the daemon terminated the watcher, try to reconnect
             console.info("reconnect")
             this.reader = undefined
             this.buffer = ""
             this.watch()
           }
-          
+
           // Otherwise caller is responsible for reestablishing connection
         })
+
       return this.cancel.bind(this)
     } catch {
       return this.cancel.bind(this)

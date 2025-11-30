@@ -7,9 +7,9 @@ import (
 	"os/exec"
 	"os/user"
 
-	"github.com/loft-sh/devpod/pkg/shell"
 	"github.com/loft-sh/log"
 	"github.com/loft-sh/ssh"
+	"github.com/skevetter/devpod/pkg/shell"
 )
 
 const (
@@ -126,8 +126,8 @@ func (s *server) handler(sess ssh.Session) {
 			exitWithError(sess, err, s.log)
 			return
 		}
-		defer l.Close()
-		defer os.RemoveAll(tmpDir)
+		defer func() { _ = l.Close() }()
+		defer func() { _ = os.RemoveAll(tmpDir) }()
 
 		go ssh.ForwardAgentConnections(l, sess)
 

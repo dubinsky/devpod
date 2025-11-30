@@ -8,12 +8,12 @@ import (
 	"sort"
 	"time"
 
-	"github.com/loft-sh/devpod/cmd/flags"
-	"github.com/loft-sh/devpod/pkg/config"
-	"github.com/loft-sh/devpod/pkg/provider"
 	"github.com/loft-sh/log"
 	"github.com/loft-sh/log/table"
 	"github.com/pkg/errors"
+	"github.com/skevetter/devpod/cmd/flags"
+	"github.com/skevetter/devpod/pkg/config"
+	"github.com/skevetter/devpod/pkg/provider"
 	"github.com/spf13/cobra"
 )
 
@@ -59,7 +59,8 @@ func (cmd *ListCmd) Run(ctx context.Context) error {
 		return err
 	}
 
-	if cmd.Output == "plain" {
+	switch cmd.Output {
+	case "plain":
 		tableEntries := [][]string{}
 		for _, entry := range entries {
 			machineConfig, err := provider.LoadMachineConfig(devPodConfig.DefaultContext, entry.Name())
@@ -82,7 +83,7 @@ func (cmd *ListCmd) Run(ctx context.Context) error {
 			"Provider",
 			"Age",
 		}, tableEntries)
-	} else if cmd.Output == "json" {
+	case "json":
 		tableEntries := []*provider.Machine{}
 		for _, entry := range entries {
 			machineConfig, err := provider.LoadMachineConfig(devPodConfig.DefaultContext, entry.Name())
@@ -100,7 +101,7 @@ func (cmd *ListCmd) Run(ctx context.Context) error {
 			return err
 		}
 		fmt.Print(string(out))
-	} else {
+	default:
 		return fmt.Errorf("unexpected output format, choose either json or plain. Got %s", cmd.Output)
 	}
 

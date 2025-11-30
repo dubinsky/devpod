@@ -5,8 +5,8 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/loft-sh/devpod/e2e/framework"
 	"github.com/onsi/ginkgo/v2"
+	"github.com/skevetter/devpod/e2e/framework"
 )
 
 var _ = DevPodDescribe("devpod up test suite", func() {
@@ -25,7 +25,7 @@ var _ = DevPodDescribe("devpod up test suite", func() {
 					wrapper, err := os.Create(initialDir + "/bin/podman-rootful")
 					framework.ExpectNoError(err)
 
-					defer wrapper.Close()
+					defer func() { _ = wrapper.Close() }()
 
 					_, err = wrapper.WriteString(`#!/bin/sh
 				sudo podman "$@"

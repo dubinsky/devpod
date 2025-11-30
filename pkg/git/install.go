@@ -4,17 +4,17 @@ import (
 	"fmt"
 	"os/exec"
 
-	"github.com/loft-sh/devpod/pkg/command"
 	"github.com/loft-sh/log"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"github.com/skevetter/devpod/pkg/command"
 )
 
 func InstallBinary(log log.Logger) error {
 	writer := log.Writer(logrus.InfoLevel, false)
 	errwriter := log.Writer(logrus.ErrorLevel, false)
-	defer writer.Close()
-	defer errwriter.Close()
+	defer func() { _ = writer.Close() }()
+	defer func() { _ = errwriter.Close() }()
 
 	// try to install git via apt / apk
 	if !command.Exists("apt") && !command.Exists("apk") {

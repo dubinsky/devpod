@@ -7,12 +7,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loft-sh/devpod/pkg/daemon/agent"
-	"github.com/loft-sh/devpod/pkg/devcontainer/config"
-	"github.com/loft-sh/devpod/pkg/devcontainer/metadata"
-	"github.com/loft-sh/devpod/pkg/driver"
-	provider2 "github.com/loft-sh/devpod/pkg/provider"
 	"github.com/pkg/errors"
+	"github.com/skevetter/devpod/pkg/command"
+	"github.com/skevetter/devpod/pkg/daemon/agent"
+	"github.com/skevetter/devpod/pkg/devcontainer/config"
+	"github.com/skevetter/devpod/pkg/devcontainer/metadata"
+	"github.com/skevetter/devpod/pkg/driver"
+	provider2 "github.com/skevetter/devpod/pkg/provider"
 )
 
 var dockerlessImage = "ghcr.io/loft-sh/dockerless:0.2.0"
@@ -40,9 +41,15 @@ func (r *runner) runSingleContainer(
 	timeout time.Duration,
 ) (*config.Result, error) {
 	r.Log.Debugf("Starting devcontainer in single container mode...")
-	containerDetails, err := r.Driver.FindDevContainer(ctx, r.ID)
-	if err != nil {
-		return nil, fmt.Errorf("find dev container: %w", err)
+
+	// Check if Docker exists before trying to find containers
+	var containerDetails *config.ContainerDetails
+	var err error
+	if command.Exists("docker") {
+		containerDetails, err = r.Driver.FindDevContainer(ctx, r.ID)
+		if err != nil {
+			return nil, fmt.Errorf("find dev container: %w", err)
+		}
 	}
 
 	// does the container already exist?
@@ -96,7 +103,7 @@ func (r *runner) runSingleContainer(
 			CLIOptions: provider2.CLIOptions{
 				PrebuildRepositories: options.PrebuildRepositories,
 				ForceDockerless:      options.ForceDockerless,
-				Platform:             options.CLIOptions.Platform,
+				Platform:             options.Platform,
 			},
 			NoBuild:       options.NoBuild,
 			RegistryCache: options.RegistryCache,
@@ -128,7 +135,7 @@ func (r *runner) runSingleContainer(
 		}
 
 		// Inject the daemon entrypoint if platform configuration is provided.
-		if options.CLIOptions.Platform.AccessKey != "" {
+		if options.Platform.AccessKey != "" {
 			r.Log.Debugf("Platform config detected, injecting DevPod daemon entrypoint.")
 
 			data, err := agent.GetEncodedWorkspaceDaemonConfig(options.Platform, r.WorkspaceConfig.Workspace, substitutionContext, mergedConfig)

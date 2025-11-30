@@ -11,10 +11,10 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/loft-sh/devpod/pkg/util"
 	"github.com/loft-sh/log"
 	"github.com/loft-sh/log/scanner"
 	"github.com/pkg/errors"
+	"github.com/skevetter/devpod/pkg/util"
 )
 
 var configLock sync.Mutex
@@ -219,7 +219,7 @@ func transformHostSection(path, host string, transform func(line string) string)
 		reader = strings.NewReader("")
 	} else {
 		reader = f
-		defer f.Close()
+		defer func() { _ = f.Close() }()
 	}
 
 	configScanner := scanner.NewScanner(reader)

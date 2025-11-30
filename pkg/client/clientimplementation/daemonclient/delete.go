@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	clientpkg "github.com/loft-sh/devpod/pkg/client"
-	"github.com/loft-sh/devpod/pkg/client/clientimplementation"
-	"github.com/loft-sh/devpod/pkg/platform"
+	clientpkg "github.com/skevetter/devpod/pkg/client"
+	"github.com/skevetter/devpod/pkg/client/clientimplementation"
+	"github.com/skevetter/devpod/pkg/platform"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -86,7 +86,7 @@ func (c *client) Delete(ctx context.Context, opt clientpkg.DeleteOptions) error 
 			return true, nil
 		} else if err != nil {
 			return false, fmt.Errorf("error getting workspace: %w", err)
-		} else if workspaceInstance.ObjectMeta.DeletionTimestamp == nil {
+		} else if workspaceInstance.DeletionTimestamp == nil {
 			// this can occur if the workspace is already deleted and was recreated
 			return true, nil
 		}

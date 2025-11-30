@@ -14,13 +14,13 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/loft-sh/devpod/pkg/command"
-	"github.com/loft-sh/devpod/pkg/config"
-	copypkg "github.com/loft-sh/devpod/pkg/copy"
-	devpodhttp "github.com/loft-sh/devpod/pkg/http"
-	"github.com/loft-sh/devpod/pkg/ide"
-	"github.com/loft-sh/devpod/pkg/single"
 	"github.com/loft-sh/log"
+	"github.com/skevetter/devpod/pkg/command"
+	"github.com/skevetter/devpod/pkg/config"
+	copypkg "github.com/skevetter/devpod/pkg/copy"
+	devpodhttp "github.com/skevetter/devpod/pkg/http"
+	"github.com/skevetter/devpod/pkg/ide"
+	"github.com/skevetter/devpod/pkg/single"
 )
 
 const (
@@ -221,7 +221,7 @@ func download(targetFolder, downloadURL string, log log.Logger) (string, error) 
 	if err != nil {
 		return "", fmt.Errorf("download deb: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		if resp.StatusCode == http.StatusNotFound {
@@ -240,7 +240,7 @@ func download(targetFolder, downloadURL string, log log.Logger) (string, error) 
 	if err != nil {
 		return "", err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	_, err = io.Copy(file, &ide.ProgressReader{
 		Reader:    resp.Body,

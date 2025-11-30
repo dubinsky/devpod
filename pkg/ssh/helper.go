@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/loft-sh/devpod/pkg/stdio"
 	"github.com/pkg/errors"
+	"github.com/skevetter/devpod/pkg/stdio"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -95,7 +95,7 @@ func Run(ctx context.Context, client *ssh.Client, command string, stdin io.Reade
 	if err != nil {
 		return err
 	}
-	defer sess.Close()
+	defer func() { _ = sess.Close() }()
 
 	for k, v := range envVars {
 		err = sess.Setenv(k, v)

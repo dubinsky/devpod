@@ -6,10 +6,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/loft-sh/devpod/cmd/flags"
-	"github.com/loft-sh/devpod/pkg/agent"
 	"github.com/loft-sh/log"
 	"github.com/pkg/errors"
+	"github.com/skevetter/devpod/cmd/flags"
+	"github.com/skevetter/devpod/pkg/agent"
 	"github.com/spf13/cobra"
 )
 
@@ -56,7 +56,7 @@ func (cmd *LogsDaemonCmd) Run(ctx context.Context) error {
 	if err != nil {
 		return errors.Wrap(err, "open agent-daemon.log")
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	_, err = io.Copy(os.Stdout, f)
 	return err

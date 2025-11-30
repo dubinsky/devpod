@@ -19,34 +19,34 @@ import (
 	"time"
 
 	v1 "github.com/google/go-containerregistry/pkg/v1"
-	"github.com/loft-sh/devpod/cmd/flags"
+	"github.com/skevetter/devpod/cmd/flags"
 
-	"github.com/loft-sh/devpod/pkg/agent"
-	"github.com/loft-sh/devpod/pkg/agent/tunnel"
-	"github.com/loft-sh/devpod/pkg/agent/tunnelserver"
-	"github.com/loft-sh/devpod/pkg/command"
-	"github.com/loft-sh/devpod/pkg/compress"
-	config2 "github.com/loft-sh/devpod/pkg/config"
-	"github.com/loft-sh/devpod/pkg/copy"
-	"github.com/loft-sh/devpod/pkg/credentials"
-	"github.com/loft-sh/devpod/pkg/devcontainer/config"
-	"github.com/loft-sh/devpod/pkg/devcontainer/setup"
-	"github.com/loft-sh/devpod/pkg/dockercredentials"
-	"github.com/loft-sh/devpod/pkg/envfile"
-	"github.com/loft-sh/devpod/pkg/extract"
-	"github.com/loft-sh/devpod/pkg/git"
-	"github.com/loft-sh/devpod/pkg/ide/fleet"
-	"github.com/loft-sh/devpod/pkg/ide/jetbrains"
-	"github.com/loft-sh/devpod/pkg/ide/jupyter"
-	"github.com/loft-sh/devpod/pkg/ide/openvscode"
-	"github.com/loft-sh/devpod/pkg/ide/rstudio"
-	"github.com/loft-sh/devpod/pkg/ide/vscode"
-	provider2 "github.com/loft-sh/devpod/pkg/provider"
-	"github.com/loft-sh/devpod/pkg/single"
-	"github.com/loft-sh/devpod/pkg/ts"
 	"github.com/loft-sh/log"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"github.com/skevetter/devpod/pkg/agent"
+	"github.com/skevetter/devpod/pkg/agent/tunnel"
+	"github.com/skevetter/devpod/pkg/agent/tunnelserver"
+	"github.com/skevetter/devpod/pkg/command"
+	"github.com/skevetter/devpod/pkg/compress"
+	config2 "github.com/skevetter/devpod/pkg/config"
+	"github.com/skevetter/devpod/pkg/copy"
+	"github.com/skevetter/devpod/pkg/credentials"
+	"github.com/skevetter/devpod/pkg/devcontainer/config"
+	"github.com/skevetter/devpod/pkg/devcontainer/setup"
+	"github.com/skevetter/devpod/pkg/dockercredentials"
+	"github.com/skevetter/devpod/pkg/envfile"
+	"github.com/skevetter/devpod/pkg/extract"
+	"github.com/skevetter/devpod/pkg/git"
+	"github.com/skevetter/devpod/pkg/ide/fleet"
+	"github.com/skevetter/devpod/pkg/ide/jetbrains"
+	"github.com/skevetter/devpod/pkg/ide/jupyter"
+	"github.com/skevetter/devpod/pkg/ide/openvscode"
+	"github.com/skevetter/devpod/pkg/ide/rstudio"
+	"github.com/skevetter/devpod/pkg/ide/vscode"
+	provider2 "github.com/skevetter/devpod/pkg/provider"
+	"github.com/skevetter/devpod/pkg/single"
+	"github.com/skevetter/devpod/pkg/ts"
 	"github.com/spf13/cobra"
 )
 
@@ -341,7 +341,7 @@ func dockerlessBuild(
 
 	// write output to log
 	errWriter := log.Writer(logrus.InfoLevel, false)
-	defer errWriter.Close()
+	defer func() { _ = errWriter.Close() }()
 
 	// start building
 	log.Infof("Start dockerless building %s %s", "/.dockerless/dockerless", strings.Join(args, " "))
@@ -349,7 +349,7 @@ func dockerlessBuild(
 
 	if debug {
 		debugWriter := log.Writer(logrus.DebugLevel, false)
-		defer debugWriter.Close()
+		defer func() { _ = debugWriter.Close() }()
 		cmd.Stdout = debugWriter
 	}
 	cmd.Stderr = errWriter
@@ -624,7 +624,7 @@ func streamMount(ctx context.Context, workspaceInfo *provider2.ContainerWorkspac
 		if err != nil {
 			return fmt.Errorf("download workspace: %w", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		// check if the response is ok
 		if resp.StatusCode != http.StatusOK {

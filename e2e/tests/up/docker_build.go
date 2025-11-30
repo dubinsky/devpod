@@ -4,13 +4,14 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 
-	"github.com/loft-sh/devpod/e2e/framework"
-	"github.com/loft-sh/devpod/pkg/devcontainer/config"
-	docker "github.com/loft-sh/devpod/pkg/docker"
 	"github.com/loft-sh/log"
 	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
+	"github.com/skevetter/devpod/e2e/framework"
+	"github.com/skevetter/devpod/pkg/devcontainer/config"
+	docker "github.com/skevetter/devpod/pkg/docker"
 )
 
 var _ = DevPodDescribe("devpod up test suite", func() {
@@ -73,13 +74,13 @@ var _ = DevPodDescribe("devpod up test suite", func() {
 
 					image1 := container.Config.LegacyImage
 
-					scriptFile, err := os.OpenFile(tempDir+"/scripts/alias.sh",
-						os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
+					ginkgo.By("Changing a file within the context")
+					scriptPath := filepath.Join(tempDir, "scripts", "alias.sh")
+					scriptFile, err := os.OpenFile(scriptPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 					framework.ExpectNoError(err)
 
-					defer scriptFile.Close()
+					defer func() { _ = scriptFile.Close() }()
 
-					ginkgo.By("Changing a file within the context")
 					_, err = scriptFile.Write([]byte("alias yr='date +%Y'"))
 					framework.ExpectNoError(err)
 
@@ -129,7 +130,7 @@ var _ = DevPodDescribe("devpod up test suite", func() {
 						os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 					framework.ExpectNoError(err)
 
-					defer scriptFile.Close()
+					defer func() { _ = scriptFile.Close() }()
 
 					ginkgo.By("Changing a file within context")
 					_, err = scriptFile.Write([]byte("apt install python"))

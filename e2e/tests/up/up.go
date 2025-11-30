@@ -10,17 +10,17 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/loft-sh/devpod/e2e/framework"
-	"github.com/loft-sh/devpod/pkg/devcontainer/config"
-	docker "github.com/loft-sh/devpod/pkg/docker"
-	"github.com/loft-sh/devpod/pkg/language"
 	"github.com/loft-sh/log"
 	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
+	"github.com/skevetter/devpod/e2e/framework"
+	"github.com/skevetter/devpod/pkg/devcontainer/config"
+	docker "github.com/skevetter/devpod/pkg/docker"
+	"github.com/skevetter/devpod/pkg/language"
 )
 
 var _ = DevPodDescribe("devpod up test suite", func() {
-	ginkgo.Context("testing up command", ginkgo.Label("up"), ginkgo.Ordered, func() {
+	ginkgo.Context("testing up command", ginkgo.Label("up"), func() {
 		var dockerHelper *docker.DockerHelper
 		var initialDir string
 
@@ -33,7 +33,7 @@ var _ = DevPodDescribe("devpod up test suite", func() {
 			framework.ExpectNoError(err)
 		})
 
-		ginkgo.It("with env vars", func() {
+		ginkgo.It("with env vars", ginkgo.Label("up-env-vars"), func() {
 			ctx := context.Background()
 			f := framework.NewDefaultFramework(initialDir + "/bin")
 
@@ -94,7 +94,7 @@ var _ = DevPodDescribe("devpod up test suite", func() {
 				workspaceEnvFileInvalid,
 				invalidData, 0o644)
 			framework.ExpectNoError(err)
-			defer os.Remove(workspaceEnvFileInvalid)
+			defer func() { _ = os.Remove(workspaceEnvFileInvalid) }()
 
 			// set env var
 			err = f.DevPodUp(ctx, name, "--workspace-env-file", workspaceEnvFileInvalid)
@@ -107,7 +107,7 @@ var _ = DevPodDescribe("devpod up test suite", func() {
 				workspaceEnvFileValid,
 				validData, 0o644)
 			framework.ExpectNoError(err)
-			defer os.Remove(workspaceEnvFileValid)
+			defer func() { _ = os.Remove(workspaceEnvFileValid) }()
 
 			// set env var
 			err = f.DevPodUp(ctx, name, "--workspace-env-file", workspaceEnvFileValid)
@@ -134,7 +134,7 @@ var _ = DevPodDescribe("devpod up test suite", func() {
 				workspaceEnvFileValid2,
 				validData, 0o644)
 			framework.ExpectNoError(err)
-			defer os.Remove(workspaceEnvFileValid2)
+			defer func() { _ = os.Remove(workspaceEnvFileValid2) }()
 
 			// set env var from both files
 			err = f.DevPodUp(ctx, name, "--workspace-env-file", fmt.Sprintf("%s,%s", workspaceEnvFileValid, workspaceEnvFileValid2))
@@ -151,7 +151,7 @@ var _ = DevPodDescribe("devpod up test suite", func() {
 			framework.ExpectEqual(out, value, "should be set now")
 		})
 
-		ginkgo.It("should allow checkout of a GitRepo from a commit hash", func() {
+		ginkgo.It("should allow checkout of a GitRepo from a commit hash", ginkgo.Label("up-git-commit"), func() {
 			ctx := context.Background()
 			f := framework.NewDefaultFramework(initialDir + "/bin")
 
@@ -169,7 +169,7 @@ var _ = DevPodDescribe("devpod up test suite", func() {
 			framework.ExpectNoError(err)
 		})
 
-		ginkgo.It("should allow checkout of a GitRepo from a pull request reference", func() {
+		ginkgo.It("should allow checkout of a GitRepo from a pull request reference", ginkgo.Label("up-git-pr"), func() {
 			ctx := context.Background()
 			f := framework.NewDefaultFramework(initialDir + "/bin")
 
@@ -183,11 +183,11 @@ var _ = DevPodDescribe("devpod up test suite", func() {
 			ginkgo.DeferCleanup(f.DevPodWorkspaceDelete, context.Background(), name)
 
 			// Wait for devpod workspace to come online (deadline: 30s)
-			err = f.DevPodUp(ctx, "github.com/loft-sh/devpod@pull/3/head")
+			err = f.DevPodUp(ctx, "github.com/skevetter/devpod@pull/3/head")
 			framework.ExpectNoError(err)
 		})
 
-		ginkgo.It("should allow checkout of a private GitRepo", func() {
+		ginkgo.It("should allow checkout of a private GitRepo", ginkgo.Label("up-git-private"), func() {
 			// need to debug
 			if runtime.GOOS == "windows" {
 				ginkgo.Skip("skipping on windows")
@@ -218,7 +218,7 @@ var _ = DevPodDescribe("devpod up test suite", func() {
 				filepath.Join(os.Getenv("HOME"), ".git-credentials"),
 				gitCredentialString, 0o644)
 			framework.ExpectNoError(err)
-			defer os.Remove(filepath.Join(os.Getenv("HOME"), ".git-credentials"))
+			defer func() { _ = os.Remove(filepath.Join(os.Getenv("HOME"), ".git-credentials")) }()
 
 			name := "testprivaterepo"
 			ginkgo.DeferCleanup(f.DevPodWorkspaceDelete, context.Background(), name)
@@ -234,7 +234,7 @@ var _ = DevPodDescribe("devpod up test suite", func() {
 			fmt.Println(out)
 		})
 
-		ginkgo.It("run devpod in Kubernetes", func() {
+		ginkgo.It("run devpod in Kubernetes", ginkgo.Label("up-kubernetes"), func() {
 			ctx := context.Background()
 			f := framework.NewDefaultFramework(initialDir + "/bin")
 			tempDir, err := framework.CopyToTempDir("tests/up/testdata/kubernetes")
@@ -264,7 +264,7 @@ var _ = DevPodDescribe("devpod up test suite", func() {
 			framework.ExpectNoError(err)
 			framework.ExpectEqual(len(list.Items), 1, "Expect 1 pod")
 			framework.ExpectEqual(len(list.Items[0].Spec.Containers), 1, "Expect 1 container")
-			framework.ExpectEqual(list.Items[0].Spec.Containers[0].Image, "mcr.microsoft.com/devcontainers/go:0-1.19-bullseye", "Expect container image")
+			framework.ExpectEqual(list.Items[0].Spec.Containers[0].Image, "mcr.microsoft.com/devcontainers/go:1-bookworm", "Expect container image")
 
 			// check if ssh works
 			err = f.DevPodSSHEchoTestString(ctx, tempDir)
@@ -309,7 +309,7 @@ var _ = DevPodDescribe("devpod up test suite", func() {
 			framework.ExpectNoError(err)
 		})
 
-		ginkgo.It("create workspace without devcontainer.json", func() {
+		ginkgo.It("create workspace without devcontainer.json", ginkgo.Label("up-no-devcontainer"), func() {
 			const providerName = "test-docker"
 			ctx := context.Background()
 
@@ -324,6 +324,7 @@ var _ = DevPodDescribe("devpod up test suite", func() {
 			err = f.DevPodProviderUse(ctx, providerName)
 			framework.ExpectNoError(err)
 			ginkgo.DeferCleanup(func() {
+				_ = f.DevPodWorkspaceDelete(ctx, tempDir)
 				err = f.DevPodProviderDelete(ctx, providerName)
 				framework.ExpectNoError(err)
 			})
@@ -345,7 +346,7 @@ var _ = DevPodDescribe("devpod up test suite", func() {
 
 			containerEnvPath, _, err := f.ExecCommandCapture(ctx, []string{"ssh", "--command", "cat " + devcontainerPath, projectName})
 			framework.ExpectNoError(err)
-			expectedImageName := language.MapConfig[language.Go].ImageContainer.Image
+			expectedImageName := language.MapConfig[language.Go].Image
 
 			gomega.Expect(containerEnvPath).To(gomega.Equal(fmt.Sprintf("{\"image\":\"%s\"}", expectedImageName)))
 
@@ -353,7 +354,7 @@ var _ = DevPodDescribe("devpod up test suite", func() {
 			framework.ExpectNoError(err)
 		})
 
-		ginkgo.It("recreate a local workspace", func() {
+		ginkgo.It("recreate a local workspace", ginkgo.Label("up-recreate-local"), func() {
 			const providerName = "test-docker"
 			ctx := context.Background()
 
@@ -383,7 +384,7 @@ var _ = DevPodDescribe("devpod up test suite", func() {
 			framework.ExpectNoError(err)
 		})
 
-		ginkgo.It("create workspace in a subpath", func() {
+		ginkgo.It("create workspace in a subpath", ginkgo.Label("up-subpath"), func() {
 			const providerName = "test-docker"
 			ctx := context.Background()
 
@@ -411,7 +412,7 @@ var _ = DevPodDescribe("devpod up test suite", func() {
 			framework.ExpectNoError(err)
 		})
 
-		ginkgo.It("recreate a remote workspace", func() {
+		ginkgo.It("recreate a remote workspace", ginkgo.Label("up-recreate-remote"), func() {
 			const providerName = "test-docker"
 			ctx := context.Background()
 
@@ -445,7 +446,7 @@ var _ = DevPodDescribe("devpod up test suite", func() {
 			framework.ExpectNoError(err)
 		})
 
-		ginkgo.It("reset a remote workspace", func() {
+		ginkgo.It("reset a remote workspace", ginkgo.Label("up-reset-remote"), func() {
 			const providerName = "test-docker"
 			ctx := context.Background()
 
@@ -489,7 +490,7 @@ var _ = DevPodDescribe("devpod up test suite", func() {
 		})
 
 		ginkgo.Context("print error message correctly", func() {
-			ginkgo.It("make sure devpod output is correct and log-output works correctly", func(ctx context.Context) {
+			ginkgo.It("make sure devpod output is correct and log-output works correctly", ginkgo.Label("up-error-output"), func(ctx context.Context) {
 				f := framework.NewDefaultFramework(initialDir + "/bin")
 				tempDir, err := framework.CopyToTempDir("tests/up/testdata/docker")
 				framework.ExpectNoError(err)
@@ -517,7 +518,7 @@ var _ = DevPodDescribe("devpod up test suite", func() {
 		})
 
 		ginkgo.Context("cleanup up on failure", func() {
-			ginkgo.It("ensure workspace cleanup when failing to create a workspace", func(ctx context.Context) {
+			ginkgo.It("ensure workspace cleanup when failing to create a workspace", ginkgo.Label("up-cleanup-fail"), func(ctx context.Context) {
 				f := framework.NewDefaultFramework(initialDir + "/bin")
 				_ = f.DevPodProviderAdd(ctx, "docker")
 				err := f.DevPodProviderUse(ctx, "docker")
@@ -533,7 +534,7 @@ var _ = DevPodDescribe("devpod up test suite", func() {
 				framework.ExpectNoError(err)
 				framework.ExpectEqual(out, initialList)
 			}, ginkgo.SpecTimeout(framework.GetTimeout()))
-			ginkgo.It("ensure workspace cleanup when not a git or folder", func(ctx context.Context) {
+			ginkgo.It("ensure workspace cleanup when not a git or folder", ginkgo.Label("up-cleanup-invalid"), func(ctx context.Context) {
 				f := framework.NewDefaultFramework(initialDir + "/bin")
 				_ = f.DevPodProviderAdd(ctx, "docker")
 				err := f.DevPodProviderUse(ctx, "docker")

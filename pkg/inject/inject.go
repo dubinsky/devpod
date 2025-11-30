@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loft-sh/devpod/pkg/command"
 	"github.com/loft-sh/log"
 	perrors "github.com/pkg/errors"
+	"github.com/skevetter/devpod/pkg/command"
 )
 
 //go:embed inject.sh
@@ -56,7 +56,7 @@ func InjectAndExecute(
 	if err != nil {
 		return true, err
 	}
-	defer stdinWriter.Close()
+	defer func() { _ = stdinWriter.Close() }()
 
 	stdoutReader, stdoutWriter, err := os.Pipe()
 	if err != nil {
@@ -80,7 +80,7 @@ func InjectAndExecute(
 	// start execution of inject.sh
 	execErrChan := make(chan error, 1)
 	go func() {
-		defer stdoutWriter.Close()
+		defer func() { _ = stdoutWriter.Close() }()
 		defer log.Debugf("done exec")
 
 		err := exec(cancelCtx, scriptRawCode, stdinReader, stdoutWriter, delayedStderr)
@@ -94,7 +94,7 @@ func InjectAndExecute(
 	// inject file
 	injectChan := make(chan injectResult, 1)
 	go func() {
-		defer stdinWriter.Close()
+		defer func() { _ = stdinWriter.Close() }()
 		defer log.Debugf("done inject")
 
 		wasExecuted, err := inject(localFile, stdinWriter, stdin, stdoutReader, stdout, delayedStderr, timeout, log)
@@ -173,7 +173,7 @@ func inject(
 		if err != nil {
 			return false, err
 		}
-		defer fileReader.Close()
+		defer func() { _ = fileReader.Close() }()
 		err = injectBinary(fileReader, stdin, stdout)
 		if err != nil {
 			return false, err

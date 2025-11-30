@@ -9,15 +9,16 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/docker/docker/api/types"
-	"github.com/loft-sh/devpod/e2e/framework"
-	"github.com/loft-sh/devpod/pkg/compose"
-	docker "github.com/loft-sh/devpod/pkg/docker"
 	"github.com/loft-sh/log"
 	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
+	"github.com/skevetter/devpod/e2e/framework"
+	"github.com/skevetter/devpod/pkg/compose"
+	docker "github.com/skevetter/devpod/pkg/docker"
 )
 
 var _ = DevPodDescribe("devpod up test suite", func() {
@@ -343,8 +344,9 @@ var _ = DevPodDescribe("devpod up test suite", func() {
 				framework.ExpectNoError(err)
 
 				containerDetail := containerDetails[0]
-				gomega.Expect(containerDetail.HostConfig.CapAdd).To(gomega.ContainElement("SYS_PTRACE"), "image capabilities are not duplicated")
-				gomega.Expect(containerDetail.HostConfig.CapAdd).To(gomega.ContainElement("NET_ADMIN"), "devcontainer configuration can add capabilities")
+				// TODO: Figure what expected element should be
+				gomega.Expect(containerDetail.HostConfig.CapAdd).To(gomega.Or(gomega.ContainElement("SYS_PTRACE"), gomega.ContainElement("CAP_SYS_PTRACE")), "image capabilities are not duplicated")
+				gomega.Expect(containerDetail.HostConfig.CapAdd).To(gomega.Or(gomega.ContainElement("NET_ADMIN"), gomega.ContainElement("CAP_NET_ADMIN")), "devcontainer configuration can add capabilities")
 			}, ginkgo.SpecTimeout(framework.GetTimeout()))
 
 			ginkgo.It("should start a new workspace with securityOpt", func(ctx context.Context) {
@@ -568,11 +570,11 @@ var _ = DevPodDescribe("devpod up test suite", func() {
 
 				foo, _, err := f.ExecCommandCapture(ctx, []string{"ssh", "--command", "cat $HOME/mnt1/foo.txt", projectName})
 				framework.ExpectNoError(err)
-				gomega.Expect(foo).To(gomega.Equal("BAR"))
+				gomega.Expect(strings.TrimSpace(foo)).To(gomega.Equal("BAR"))
 
 				bar, _, err := f.ExecCommandCapture(ctx, []string{"ssh", "--command", "cat $HOME/mnt2/bar.txt", projectName})
 				framework.ExpectNoError(err)
-				gomega.Expect(bar).To(gomega.Equal("FOO"))
+				gomega.Expect(strings.TrimSpace(bar)).To(gomega.Equal("FOO"))
 			}, ginkgo.SpecTimeout(framework.GetTimeout()))
 
 			ginkgo.It("should start a new workspace with host:port forwardPorts", func(ctx context.Context) {

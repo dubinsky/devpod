@@ -10,14 +10,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loft-sh/devpod/pkg/config"
-	"github.com/loft-sh/devpod/pkg/copy"
-	"github.com/loft-sh/devpod/pkg/download"
-	"github.com/loft-sh/devpod/pkg/extract"
-	provider2 "github.com/loft-sh/devpod/pkg/provider"
 	"github.com/loft-sh/log"
 	"github.com/loft-sh/log/hash"
 	"github.com/pkg/errors"
+	"github.com/skevetter/devpod/pkg/config"
+	"github.com/skevetter/devpod/pkg/copy"
+	"github.com/skevetter/devpod/pkg/download"
+	"github.com/skevetter/devpod/pkg/extract"
+	provider2 "github.com/skevetter/devpod/pkg/provider"
 )
 
 func ToEnvironmentWithBinaries(context string, workspace *provider2.Workspace, machine *provider2.Machine, options map[string]config.OptionValue, config *provider2.ProviderConfig, extraEnv map[string]string, log log.Logger) ([]string, error) {
@@ -319,13 +319,13 @@ func downloadFile(binaryName string, binary *provider2.ProviderBinary, targetFol
 	if err != nil {
 		return "", errors.Wrap(err, "download binary")
 	}
-	defer body.Close()
+	defer func() { _ = body.Close() }()
 
 	file, err := os.Create(targetPath)
 	if err != nil {
 		return "", err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	_, err = io.Copy(file, body)
 	if err != nil {
@@ -349,7 +349,7 @@ func downloadArchive(binaryName string, binary *provider2.ProviderBinary, target
 	if err != nil {
 		return "", err
 	}
-	defer body.Close()
+	defer func() { _ = body.Close() }()
 
 	// determine archive
 	if strings.HasSuffix(binary.Path, ".gz") || strings.HasSuffix(binary.Path, ".tar") || strings.HasSuffix(binary.Path, ".tgz") {
@@ -364,7 +364,7 @@ func downloadArchive(binaryName string, binary *provider2.ProviderBinary, target
 		if err != nil {
 			return "", err
 		}
-		defer os.Remove(tempFile)
+		defer func() { _ = os.Remove(tempFile) }()
 
 		err = extract.UnzipFolder(tempFile, targetFolder)
 		if err != nil {
@@ -382,7 +382,7 @@ func downloadToTempFile(reader io.Reader) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer tempFile.Close()
+	defer func() { _ = tempFile.Close() }()
 
 	_, err = io.Copy(tempFile, reader)
 	if err != nil {

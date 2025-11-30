@@ -6,18 +6,18 @@ import (
 	"io"
 	"os"
 
-	"github.com/loft-sh/devpod/cmd/flags"
-	"github.com/loft-sh/devpod/pkg/agent"
-	"github.com/loft-sh/devpod/pkg/agent/tunnelserver"
-	"github.com/loft-sh/devpod/pkg/client"
-	"github.com/loft-sh/devpod/pkg/config"
-	config2 "github.com/loft-sh/devpod/pkg/devcontainer/config"
-	"github.com/loft-sh/devpod/pkg/image"
-	"github.com/loft-sh/devpod/pkg/provider"
-	workspace2 "github.com/loft-sh/devpod/pkg/workspace"
 	"github.com/loft-sh/log"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"github.com/skevetter/devpod/cmd/flags"
+	"github.com/skevetter/devpod/pkg/agent"
+	"github.com/skevetter/devpod/pkg/agent/tunnelserver"
+	"github.com/skevetter/devpod/pkg/client"
+	"github.com/skevetter/devpod/pkg/config"
+	config2 "github.com/skevetter/devpod/pkg/devcontainer/config"
+	"github.com/skevetter/devpod/pkg/image"
+	"github.com/skevetter/devpod/pkg/provider"
+	workspace2 "github.com/skevetter/devpod/pkg/workspace"
 	"github.com/spf13/cobra"
 )
 
@@ -74,7 +74,7 @@ func NewBuildCmd(flags *flags.GlobalFlags) *cobra.Command {
 			}
 			sshConfigPath := sshConfigFile.Name()
 			// defer removal of temporary ssh config file
-			defer os.Remove(sshConfigPath)
+			defer func() { _ = os.Remove(sshConfigPath) }()
 
 			baseWorkspaceClient, err := workspace2.Resolve(
 				ctx,
@@ -189,8 +189,8 @@ func buildAgentClient(ctx context.Context, workspaceClient client.WorkspaceClien
 	if err != nil {
 		return nil, err
 	}
-	defer stdoutWriter.Close()
-	defer stdinWriter.Close()
+	defer func() { _ = stdoutWriter.Close() }()
+	defer func() { _ = stdinWriter.Close() }()
 
 	// start machine on stdio
 	cancelCtx, cancel := context.WithCancel(ctx)
@@ -202,7 +202,7 @@ func buildAgentClient(ctx context.Context, workspaceClient client.WorkspaceClien
 		defer cancel()
 
 		writer := log.ErrorStreamOnly().Writer(logrus.InfoLevel, false)
-		defer writer.Close()
+		defer func() { _ = writer.Close() }()
 
 		errChan <- agent.InjectAgentAndExecute(
 			cancelCtx,

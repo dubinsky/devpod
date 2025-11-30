@@ -12,11 +12,11 @@ import (
 	"path/filepath"
 	"time"
 
-	devpodlog "github.com/loft-sh/devpod/pkg/log"
-	"github.com/loft-sh/devpod/pkg/platform/client"
-	"github.com/loft-sh/devpod/pkg/ts"
 	"github.com/loft-sh/log"
 	"github.com/sirupsen/logrus"
+	devpodlog "github.com/skevetter/devpod/pkg/log"
+	"github.com/skevetter/devpod/pkg/platform/client"
+	"github.com/skevetter/devpod/pkg/ts"
 	"tailscale.com/client/tailscale"
 	"tailscale.com/tsnet"
 	"tailscale.com/types/netmap"
@@ -138,7 +138,7 @@ func (d *Daemon) Listen(ln net.Listener) error {
 }
 
 func (d *Daemon) handler(conn net.Conn, dialFunc dialFunc) {
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	backendConn, err := dialFunc(ctx)
@@ -146,7 +146,7 @@ func (d *Daemon) handler(conn net.Conn, dialFunc dialFunc) {
 		d.log.Error("dial: %v", err)
 		return
 	}
-	defer backendConn.Close()
+	defer func() { _ = backendConn.Close() }()
 
 	errChan := make(chan error, 1)
 	go func() {

@@ -6,9 +6,9 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/loft-sh/devpod/e2e/framework"
 	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
+	"github.com/skevetter/devpod/e2e/framework"
 )
 
 var _ = ginkgo.Describe("[integration]: devpod provider ssh test suite", ginkgo.Ordered, func() {
@@ -23,6 +23,12 @@ var _ = ginkgo.Describe("[integration]: devpod provider ssh test suite", ginkgo.
 		})
 
 		ginkgo.It("should generate ssh keypairs", func() {
+			sshDir := os.Getenv("HOME") + "/.ssh"
+			if _, err := os.Stat(sshDir); os.IsNotExist(err) {
+				err = os.MkdirAll(sshDir, 0700)
+				framework.ExpectNoError(err)
+			}
+
 			_, err := os.Stat(os.Getenv("HOME") + "/.ssh/id_rsa")
 			if err != nil {
 				fmt.Println("generating ssh keys")
@@ -51,7 +57,7 @@ var _ = ginkgo.Describe("[integration]: devpod provider ssh test suite", ginkgo.
 					os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 				framework.ExpectNoError(err)
 
-				defer f.Close()
+				defer func() { _ = f.Close() }()
 				_, err = f.Write(publicKey)
 				framework.ExpectNoError(err)
 			}

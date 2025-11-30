@@ -7,12 +7,12 @@ import (
 	"sort"
 	"time"
 
-	proflags "github.com/loft-sh/devpod/cmd/pro/flags"
-	"github.com/loft-sh/devpod/pkg/config"
-	"github.com/loft-sh/devpod/pkg/provider"
-	"github.com/loft-sh/devpod/pkg/workspace"
 	"github.com/loft-sh/log"
 	"github.com/loft-sh/log/table"
+	proflags "github.com/skevetter/devpod/cmd/pro/flags"
+	"github.com/skevetter/devpod/pkg/config"
+	"github.com/skevetter/devpod/pkg/provider"
+	"github.com/skevetter/devpod/pkg/workspace"
 	"github.com/spf13/cobra"
 )
 
@@ -56,7 +56,8 @@ func (cmd *ListCmd) Run(ctx context.Context) error {
 		return err
 	}
 
-	if cmd.Output == "plain" {
+	switch cmd.Output {
+	case "plain":
 		tableEntries := [][]string{}
 		for _, proInstance := range proInstances {
 			entry := []string{
@@ -85,7 +86,7 @@ func (cmd *ListCmd) Run(ctx context.Context) error {
 		}
 
 		table.PrintTable(log.Default, tableHeaders, tableEntries)
-	} else if cmd.Output == "json" {
+	case "json":
 		tableEntries := []*proTableEntry{}
 		for _, proInstance := range proInstances {
 			entry := &proTableEntry{
@@ -110,7 +111,7 @@ func (cmd *ListCmd) Run(ctx context.Context) error {
 			return err
 		}
 		fmt.Print(string(out))
-	} else {
+	default:
 		return fmt.Errorf("unexpected output format, choose either json or plain. Got %s", cmd.Output)
 	}
 

@@ -16,36 +16,36 @@ import (
 	"syscall"
 
 	"github.com/blang/semver"
-	"github.com/loft-sh/devpod/cmd/flags"
-	"github.com/loft-sh/devpod/pkg/agent"
-	"github.com/loft-sh/devpod/pkg/agent/tunnelserver"
-	client2 "github.com/loft-sh/devpod/pkg/client"
-	"github.com/loft-sh/devpod/pkg/client/clientimplementation"
-	"github.com/loft-sh/devpod/pkg/command"
-	"github.com/loft-sh/devpod/pkg/config"
-	config2 "github.com/loft-sh/devpod/pkg/devcontainer/config"
-	"github.com/loft-sh/devpod/pkg/devcontainer/sshtunnel"
-	"github.com/loft-sh/devpod/pkg/ide"
-	"github.com/loft-sh/devpod/pkg/ide/fleet"
-	"github.com/loft-sh/devpod/pkg/ide/jetbrains"
-	"github.com/loft-sh/devpod/pkg/ide/jupyter"
-	"github.com/loft-sh/devpod/pkg/ide/openvscode"
-	"github.com/loft-sh/devpod/pkg/ide/rstudio"
-	"github.com/loft-sh/devpod/pkg/ide/vscode"
-	"github.com/loft-sh/devpod/pkg/ide/zed"
-	open2 "github.com/loft-sh/devpod/pkg/open"
-	"github.com/loft-sh/devpod/pkg/platform"
-	"github.com/loft-sh/devpod/pkg/port"
-	provider2 "github.com/loft-sh/devpod/pkg/provider"
-	devssh "github.com/loft-sh/devpod/pkg/ssh"
-	"github.com/loft-sh/devpod/pkg/telemetry"
-	"github.com/loft-sh/devpod/pkg/tunnel"
-	"github.com/loft-sh/devpod/pkg/util"
-	"github.com/loft-sh/devpod/pkg/version"
-	workspace2 "github.com/loft-sh/devpod/pkg/workspace"
 	"github.com/loft-sh/log"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"github.com/skevetter/devpod/cmd/flags"
+	"github.com/skevetter/devpod/pkg/agent"
+	"github.com/skevetter/devpod/pkg/agent/tunnelserver"
+	client2 "github.com/skevetter/devpod/pkg/client"
+	"github.com/skevetter/devpod/pkg/client/clientimplementation"
+	"github.com/skevetter/devpod/pkg/command"
+	"github.com/skevetter/devpod/pkg/config"
+	config2 "github.com/skevetter/devpod/pkg/devcontainer/config"
+	"github.com/skevetter/devpod/pkg/devcontainer/sshtunnel"
+	"github.com/skevetter/devpod/pkg/ide"
+	"github.com/skevetter/devpod/pkg/ide/fleet"
+	"github.com/skevetter/devpod/pkg/ide/jetbrains"
+	"github.com/skevetter/devpod/pkg/ide/jupyter"
+	"github.com/skevetter/devpod/pkg/ide/openvscode"
+	"github.com/skevetter/devpod/pkg/ide/rstudio"
+	"github.com/skevetter/devpod/pkg/ide/vscode"
+	"github.com/skevetter/devpod/pkg/ide/zed"
+	open2 "github.com/skevetter/devpod/pkg/open"
+	"github.com/skevetter/devpod/pkg/platform"
+	"github.com/skevetter/devpod/pkg/port"
+	provider2 "github.com/skevetter/devpod/pkg/provider"
+	devssh "github.com/skevetter/devpod/pkg/ssh"
+	"github.com/skevetter/devpod/pkg/telemetry"
+	"github.com/skevetter/devpod/pkg/tunnel"
+	"github.com/skevetter/devpod/pkg/util"
+	"github.com/skevetter/devpod/pkg/version"
+	workspace2 "github.com/skevetter/devpod/pkg/workspace"
 	"github.com/skratchdot/open-golang/open"
 	"github.com/spf13/cobra"
 	"golang.org/x/crypto/ssh"
@@ -404,8 +404,8 @@ func (cmd *UpCmd) devPodUpProxy(
 	if err != nil {
 		return nil, err
 	}
-	defer stdoutWriter.Close()
-	defer stdinWriter.Close()
+	defer func() { _ = stdoutWriter.Close() }()
+	defer func() { _ = stdinWriter.Close() }()
 
 	// start machine on stdio
 	cancelCtx, cancel := context.WithCancel(ctx)
@@ -897,7 +897,7 @@ func startBrowserTunnel(
 		if err != nil {
 			return err
 		}
-		defer toolClient.Close()
+		defer func() { _ = toolClient.Close() }()
 
 		err = startServicesDaemon(ctx,
 			devPodConfig,
@@ -920,7 +920,7 @@ func startBrowserTunnel(
 		ctx,
 		func(ctx context.Context, stdin io.Reader, stdout io.Writer) error {
 			writer := logger.Writer(logrus.DebugLevel, false)
-			defer writer.Close()
+			defer func() { _ = writer.Close() }()
 
 			cmd, err := createSSHCommand(ctx, client, logger, []string{
 				"--log-output=raw",

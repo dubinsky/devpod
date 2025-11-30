@@ -7,11 +7,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/loft-sh/devpod/cmd/flags"
-	"github.com/loft-sh/devpod/pkg/git"
 	"github.com/loft-sh/log"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"github.com/skevetter/devpod/cmd/flags"
+	"github.com/skevetter/devpod/pkg/git"
 	"github.com/spf13/cobra"
 )
 
@@ -146,7 +146,7 @@ func setupDotfiles(logger log.Logger) error {
 
 			// remove existing symlink and relink
 			if _, err := os.Lstat(filepath.Join(os.Getenv("HOME"), file.Name())); err == nil {
-				os.Remove(filepath.Join(os.Getenv("HOME"), file.Name()))
+				_ = os.Remove(filepath.Join(os.Getenv("HOME"), file.Name()))
 			}
 			err = os.Symlink(filepath.Join(pwd, file.Name()), filepath.Join(os.Getenv("HOME"), file.Name()))
 			if err != nil {

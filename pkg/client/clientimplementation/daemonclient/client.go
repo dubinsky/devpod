@@ -13,17 +13,17 @@ import (
 	"time"
 
 	storagev1 "github.com/loft-sh/api/v4/pkg/apis/storage/v1"
-	clientpkg "github.com/loft-sh/devpod/pkg/client"
-	"github.com/loft-sh/devpod/pkg/config"
-	daemon "github.com/loft-sh/devpod/pkg/daemon/platform"
-	"github.com/loft-sh/devpod/pkg/options"
-	"github.com/loft-sh/devpod/pkg/platform"
-	platformclient "github.com/loft-sh/devpod/pkg/platform/client"
-	"github.com/loft-sh/devpod/pkg/provider"
-	sshServer "github.com/loft-sh/devpod/pkg/ssh/server"
-	"github.com/loft-sh/devpod/pkg/ts"
 	"github.com/loft-sh/log"
 	perrors "github.com/pkg/errors"
+	clientpkg "github.com/skevetter/devpod/pkg/client"
+	"github.com/skevetter/devpod/pkg/config"
+	daemon "github.com/skevetter/devpod/pkg/daemon/platform"
+	"github.com/skevetter/devpod/pkg/options"
+	"github.com/skevetter/devpod/pkg/platform"
+	platformclient "github.com/skevetter/devpod/pkg/platform/client"
+	"github.com/skevetter/devpod/pkg/provider"
+	sshServer "github.com/skevetter/devpod/pkg/ssh/server"
+	"github.com/skevetter/devpod/pkg/ts"
 	"github.com/skratchdot/open-golang/open"
 	"golang.org/x/crypto/ssh"
 	"tailscale.com/client/tailscale"
@@ -206,7 +206,7 @@ func (c *client) DirectTunnel(ctx context.Context, stdin io.Reader, stdout io.Wr
 	if err != nil {
 		return fmt.Errorf("failed to connect to SSH server in proxy mode: %w", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	errChan := make(chan error, 1)
 	go func() {
@@ -262,7 +262,7 @@ func (c *client) Ping(ctx context.Context, writer io.Writer) error {
 		if result.DERPRegionID != 0 {
 			via = fmt.Sprintf("DERP(%s)", result.DERPRegionCode)
 		}
-		_, err = writer.Write([]byte(fmt.Sprintf("pong from %s (%s) via %v in %v\n", result.NodeName, result.NodeIP, via, latency)))
+		_, err = fmt.Fprintf(writer, "pong from %s (%s) via %v in %v\n", result.NodeName, result.NodeIP, via, latency)
 		if err != nil {
 			return fmt.Errorf("failed to write ping result: %w", err)
 		}

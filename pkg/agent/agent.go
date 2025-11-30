@@ -13,13 +13,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loft-sh/devpod/pkg/command"
-	"github.com/loft-sh/devpod/pkg/compress"
-	provider2 "github.com/loft-sh/devpod/pkg/provider"
-	"github.com/loft-sh/devpod/pkg/version"
 	"github.com/loft-sh/log"
 	perrors "github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"github.com/skevetter/devpod/pkg/command"
+	"github.com/skevetter/devpod/pkg/compress"
+	provider2 "github.com/skevetter/devpod/pkg/provider"
+	"github.com/skevetter/devpod/pkg/version"
 )
 
 const DefaultInactivityTimeout = time.Minute * 20
@@ -30,7 +30,7 @@ const RemoteDevPodHelperLocation = "/tmp/devpod"
 
 const ContainerActivityFile = "/tmp/devpod.activity"
 
-const defaultAgentDownloadURL = "https://github.com/loft-sh/devpod/releases/download/"
+const defaultAgentDownloadURL = "https://github.com/skevetter/devpod/releases/download/"
 
 const EnvDevPodAgentURL = "DEVPOD_AGENT_URL"
 
@@ -43,7 +43,7 @@ func DefaultAgentDownloadURL() string {
 	}
 
 	if version.GetVersion() == version.DevVersion {
-		return "https://github.com/loft-sh/devpod/releases/latest/download/"
+		return "https://github.com/skevetter/devpod/releases/latest/download/"
 	}
 
 	return defaultAgentDownloadURL + version.GetVersion()
@@ -110,7 +110,7 @@ func ParseAgentWorkspaceInfo(workspaceConfigFile string) (*provider2.AgentWorksp
 
 func ReadAgentWorkspaceInfo(agentFolder, context, id string, log log.Logger) (bool, *provider2.AgentWorkspaceInfo, error) {
 	workspaceInfo, err := readAgentWorkspaceInfo(agentFolder, context, id)
-	if err != nil && !(errors.Is(err, ErrFindAgentHomeFolder) || errors.Is(err, os.ErrPermission)) {
+	if err != nil && !errors.Is(err, ErrFindAgentHomeFolder) && !errors.Is(err, os.ErrPermission) {
 		return false, nil, err
 	}
 
@@ -274,10 +274,7 @@ func rerunAsRoot(workspaceInfo *provider2.AgentWorkspaceInfo, log log.Logger) (b
 	}
 
 	// check if daemon needs to be installed
-	agentRootRequired := false
-	if workspaceInfo == nil || len(workspaceInfo.Agent.Exec.Shutdown) > 0 {
-		agentRootRequired = true
-	}
+	agentRootRequired := workspaceInfo == nil || len(workspaceInfo.Agent.Exec.Shutdown) > 0
 
 	// check if root required
 	if !dockerRootRequired && !agentRootRequired {

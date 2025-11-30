@@ -6,14 +6,14 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/loft-sh/devpod/cmd/completion"
-	"github.com/loft-sh/devpod/cmd/flags"
-	client2 "github.com/loft-sh/devpod/pkg/client"
-	"github.com/loft-sh/devpod/pkg/client/clientimplementation"
-	"github.com/loft-sh/devpod/pkg/config"
-	workspace2 "github.com/loft-sh/devpod/pkg/workspace"
 	"github.com/loft-sh/log"
 	"github.com/pkg/errors"
+	"github.com/skevetter/devpod/cmd/completion"
+	"github.com/skevetter/devpod/cmd/flags"
+	client2 "github.com/skevetter/devpod/pkg/client"
+	"github.com/skevetter/devpod/pkg/client/clientimplementation"
+	"github.com/skevetter/devpod/pkg/config"
+	workspace2 "github.com/skevetter/devpod/pkg/workspace"
 	"github.com/spf13/cobra"
 )
 
@@ -85,17 +85,19 @@ func (cmd *StatusCmd) Run(ctx context.Context, client client2.BaseWorkspaceClien
 		return err
 	}
 
-	if cmd.Output == "plain" {
-		if instanceStatus == client2.StatusStopped {
+	switch cmd.Output {
+	case "plain":
+		switch instanceStatus {
+		case client2.StatusStopped:
 			log.Infof("Workspace '%s' is '%s', you can start it via 'devpod up %s'", client.Workspace(), instanceStatus, client.Workspace())
-		} else if instanceStatus == client2.StatusBusy {
+		case client2.StatusBusy:
 			log.Infof("Workspace '%s' is '%s', which means its currently unaccessible. This is usually resolved by waiting a couple of minutes", client.Workspace(), instanceStatus)
-		} else if instanceStatus == client2.StatusNotFound {
+		case client2.StatusNotFound:
 			log.Infof("Workspace '%s' is '%s', you can create it via 'devpod up %s'", client.Workspace(), instanceStatus, client.Workspace())
-		} else {
+		default:
 			log.Infof("Workspace '%s' is '%s'", client.Workspace(), instanceStatus)
 		}
-	} else if cmd.Output == "json" {
+	case "json":
 		out, err := json.Marshal(&client2.WorkspaceStatus{
 			ID:       client.Workspace(),
 			Context:  client.Context(),
@@ -107,7 +109,7 @@ func (cmd *StatusCmd) Run(ctx context.Context, client client2.BaseWorkspaceClien
 		}
 
 		fmt.Print(string(out))
-	} else {
+	default:
 		return fmt.Errorf("unexpected output format, choose either json or plain. Got %s", cmd.Output)
 	}
 

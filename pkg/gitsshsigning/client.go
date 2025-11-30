@@ -7,9 +7,9 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/loft-sh/devpod/pkg/credentials"
-	devpodhttp "github.com/loft-sh/devpod/pkg/http"
 	"github.com/loft-sh/log"
+	"github.com/skevetter/devpod/pkg/credentials"
+	devpodhttp "github.com/skevetter/devpod/pkg/http"
 )
 
 // HandleGitSSHProgramCall implements logic handling call from git when signing a commit
@@ -84,7 +84,7 @@ func sendSignatureRequest(requestBody []byte, log log.Logger) ([]byte, error) {
 		log.Errorf("Error retrieving git ssh signature: %w", err)
 		return nil, err
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 
 	return io.ReadAll(response.Body)
 }

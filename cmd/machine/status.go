@@ -5,11 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/loft-sh/devpod/cmd/flags"
-	"github.com/loft-sh/devpod/pkg/client"
-	"github.com/loft-sh/devpod/pkg/config"
-	"github.com/loft-sh/devpod/pkg/workspace"
 	"github.com/loft-sh/log"
+	"github.com/skevetter/devpod/cmd/flags"
+	"github.com/skevetter/devpod/pkg/client"
+	"github.com/skevetter/devpod/pkg/config"
+	"github.com/skevetter/devpod/pkg/workspace"
 	"github.com/spf13/cobra"
 )
 
@@ -55,17 +55,19 @@ func (cmd *StatusCmd) Run(ctx context.Context, args []string) error {
 		return err
 	}
 
-	if cmd.Output == "plain" {
-		if machineStatus == client.StatusStopped {
+	switch cmd.Output {
+	case "plain":
+		switch machineStatus {
+		case client.StatusStopped:
 			log.Default.Infof("Machine '%s' is '%s', you can start it via 'devpod machine start %s'", machineClient.Machine(), machineStatus, machineClient.Machine())
-		} else if machineStatus == client.StatusBusy {
+		case client.StatusBusy:
 			log.Default.Infof("Machine '%s' is '%s', which means its currently unaccessible. This is usually resolved by waiting a couple of minutes", machineClient.Machine(), machineStatus)
-		} else if machineStatus == client.StatusNotFound {
+		case client.StatusNotFound:
 			log.Default.Infof("Machine '%s' is '%s'", machineClient.Machine(), machineStatus)
-		} else {
+		default:
 			log.Default.Infof("Machine '%s' is '%s'", machineClient.Machine(), machineStatus)
 		}
-	} else if cmd.Output == "json" {
+	case "json":
 		out, err := json.Marshal(struct {
 			ID       string `json:"id,omitempty"`
 			Context  string `json:"context,omitempty"`
@@ -82,7 +84,7 @@ func (cmd *StatusCmd) Run(ctx context.Context, args []string) error {
 		}
 
 		fmt.Print(string(out))
-	} else {
+	default:
 		return fmt.Errorf("unexpected output format, choose either json or plain. Got %s", cmd.Output)
 	}
 

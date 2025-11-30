@@ -7,13 +7,13 @@ import (
 	"sort"
 	"strconv"
 
-	"github.com/loft-sh/devpod/cmd/completion"
-	"github.com/loft-sh/devpod/cmd/flags"
-	"github.com/loft-sh/devpod/pkg/config"
-	"github.com/loft-sh/devpod/pkg/types"
-	"github.com/loft-sh/devpod/pkg/workspace"
 	"github.com/loft-sh/log"
 	"github.com/loft-sh/log/table"
+	"github.com/skevetter/devpod/cmd/completion"
+	"github.com/skevetter/devpod/cmd/flags"
+	"github.com/skevetter/devpod/pkg/config"
+	"github.com/skevetter/devpod/pkg/types"
+	"github.com/skevetter/devpod/pkg/workspace"
 	"github.com/spf13/cobra"
 )
 
@@ -67,10 +67,10 @@ func (cmd *OptionsCmd) Run(ctx context.Context, args []string) error {
 		return fmt.Errorf("please specify a provider")
 	}
 
-	if providerName != "" && cmd.GlobalFlags.Provider != "" {
-		if providerName != cmd.GlobalFlags.Provider {
+	if providerName != "" && cmd.Provider != "" {
+		if providerName != cmd.Provider {
 			log.Default.Infof("providerName=%+v", providerName)
-			log.Default.Infof("GlobalFlags.Provider=%+v", cmd.GlobalFlags.Provider)
+			log.Default.Infof("GlobalFlags.Provider=%+v", cmd.Provider)
 			return fmt.Errorf("ambiguous provider configuration detected")
 		}
 	}

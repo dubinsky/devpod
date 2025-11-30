@@ -10,11 +10,11 @@ import (
 	"runtime"
 	"time"
 
-	devpodhttp "github.com/loft-sh/devpod/pkg/http"
-	"github.com/loft-sh/devpod/pkg/inject"
-	"github.com/loft-sh/devpod/pkg/shell"
-	"github.com/loft-sh/devpod/pkg/version"
 	"github.com/loft-sh/log"
+	devpodhttp "github.com/skevetter/devpod/pkg/http"
+	"github.com/skevetter/devpod/pkg/inject"
+	"github.com/skevetter/devpod/pkg/shell"
+	"github.com/skevetter/devpod/pkg/version"
 )
 
 var waitForInstanceConnectionTimeout = time.Minute * 5
@@ -203,7 +203,7 @@ func downloadAgentLocally(tryDownloadURL, targetArch string, log log.Logger) (st
 	if err != nil {
 		return "", fmt.Errorf("download devpod: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if statErr == nil && stat.Size() == resp.ContentLength {
 		return agentPath, nil
@@ -214,7 +214,7 @@ func downloadAgentLocally(tryDownloadURL, targetArch string, log log.Logger) (st
 	if err != nil {
 		return "", fmt.Errorf("create agent binary: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	_, err = io.Copy(file, resp.Body)
 	if err != nil {

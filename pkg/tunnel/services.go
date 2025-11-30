@@ -14,19 +14,19 @@ import (
 
 	"github.com/docker/go-connections/nat"
 	"github.com/loft-sh/api/v4/pkg/devpod"
-	"github.com/loft-sh/devpod/pkg/agent"
-	"github.com/loft-sh/devpod/pkg/agent/tunnelserver"
-	"github.com/loft-sh/devpod/pkg/config"
-	config2 "github.com/loft-sh/devpod/pkg/devcontainer/config"
-	"github.com/loft-sh/devpod/pkg/devcontainer/setup"
-	"github.com/loft-sh/devpod/pkg/gitsshsigning"
-	"github.com/loft-sh/devpod/pkg/ide/openvscode"
-	"github.com/loft-sh/devpod/pkg/netstat"
-	"github.com/loft-sh/devpod/pkg/provider"
-	devssh "github.com/loft-sh/devpod/pkg/ssh"
 	"github.com/loft-sh/log"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"github.com/skevetter/devpod/pkg/agent"
+	"github.com/skevetter/devpod/pkg/agent/tunnelserver"
+	"github.com/skevetter/devpod/pkg/config"
+	config2 "github.com/skevetter/devpod/pkg/devcontainer/config"
+	"github.com/skevetter/devpod/pkg/devcontainer/setup"
+	"github.com/skevetter/devpod/pkg/gitsshsigning"
+	"github.com/skevetter/devpod/pkg/ide/openvscode"
+	"github.com/skevetter/devpod/pkg/netstat"
+	"github.com/skevetter/devpod/pkg/provider"
+	devssh "github.com/skevetter/devpod/pkg/ssh"
 	"golang.org/x/crypto/ssh"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/util/retry"
@@ -70,7 +70,7 @@ func RunServices(
 		if err != nil {
 			return err
 		}
-		defer stdoutWriter.Close()
+		defer func() { _ = stdoutWriter.Close() }()
 
 		stdinReader, stdinWriter, err := os.Pipe()
 		if err != nil {
@@ -90,7 +90,7 @@ func RunServices(
 		errChan := make(chan error, 1)
 		go func() {
 			defer cancel()
-			defer stdinWriter.Close()
+			defer func() { _ = stdinWriter.Close() }()
 			// forward credentials to container
 			err := tunnelserver.RunServicesServer(
 				cancelCtx,
@@ -111,7 +111,7 @@ func RunServices(
 
 		// run credentials server
 		writer := log.ErrorStreamOnly().Writer(logrus.DebugLevel, false)
-		defer writer.Close()
+		defer func() { _ = writer.Close() }()
 
 		command := fmt.Sprintf("'%s' agent container credentials-server --user '%s'", agent.ContainerDevPodHelperLocation, user)
 		if configureGitCredentials {

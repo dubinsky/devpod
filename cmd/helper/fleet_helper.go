@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loft-sh/devpod/cmd/flags"
-	"github.com/loft-sh/devpod/pkg/agent"
+	"github.com/skevetter/devpod/cmd/flags"
+	"github.com/skevetter/devpod/pkg/agent"
 	"github.com/spf13/cobra"
 )
 
@@ -63,7 +63,7 @@ func (c *FleetServerCmd) Run(cmd *cobra.Command, _ []string) error {
 			// we have an active session, so let's keep alive
 			if strings.Contains(connString[len(connString)-1][0], "is connected") {
 				file, _ := os.Create(agent.ContainerActivityFile)
-				file.Close()
+				_ = file.Close()
 			}
 		case <-cmd.Context().Done():
 			//context is done - either canceled or time is up for timeout

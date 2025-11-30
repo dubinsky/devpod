@@ -19,17 +19,17 @@ import (
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/loft-sh/api/v4/pkg/devpod"
-	"github.com/loft-sh/devpod/pkg/devcontainer/build"
-	"github.com/loft-sh/devpod/pkg/devcontainer/config"
-	"github.com/loft-sh/devpod/pkg/devcontainer/feature"
-	"github.com/loft-sh/devpod/pkg/image"
-	"github.com/loft-sh/devpod/pkg/provider"
 	"github.com/loft-sh/log"
 	"github.com/moby/buildkit/client"
 	"github.com/moby/buildkit/exporter/containerimage/exptypes"
 	"github.com/moby/buildkit/session"
 	"github.com/moby/buildkit/session/auth/authprovider"
 	"github.com/sirupsen/logrus"
+	"github.com/skevetter/devpod/pkg/devcontainer/build"
+	"github.com/skevetter/devpod/pkg/devcontainer/config"
+	"github.com/skevetter/devpod/pkg/devcontainer/feature"
+	"github.com/skevetter/devpod/pkg/image"
+	"github.com/skevetter/devpod/pkg/provider"
 	"github.com/tonistiigi/fsutil"
 )
 
@@ -86,7 +86,7 @@ func BuildRemote(
 	if err != nil {
 		return nil, fmt.Errorf("get client: %w", err)
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 
 	info, err := c.Info(timeoutCtx)
 	if err != nil {
@@ -134,7 +134,7 @@ func BuildRemote(
 		return nil, fmt.Errorf("get auth config for %s: %w", ref.Context().String(), err)
 	}
 
-	registry := ref.Context().Registry.RegistryStr()
+	registry := ref.Context().RegistryStr()
 	session := []session.Attachable{
 		authprovider.NewDockerAuthProvider(authprovider.DockerAuthProviderConfig{
 			ConfigFile: &configfile.ConfigFile{
@@ -252,7 +252,7 @@ func BuildRemote(
 
 	// TODO: Writer should be async to prevent blocking while waiting for tunnel response
 	writer := log.Writer(logrus.InfoLevel, false)
-	defer writer.Close()
+	defer func() { _ = writer.Close() }()
 	pw, err := NewPrinter(ctx, writer)
 	if err != nil {
 		return nil, err

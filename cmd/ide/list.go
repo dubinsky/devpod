@@ -7,11 +7,11 @@ import (
 	"sort"
 	"strconv"
 
-	"github.com/loft-sh/devpod/cmd/flags"
-	"github.com/loft-sh/devpod/pkg/config"
-	"github.com/loft-sh/devpod/pkg/ide/ideparse"
 	"github.com/loft-sh/log"
 	"github.com/loft-sh/log/table"
+	"github.com/skevetter/devpod/cmd/flags"
+	"github.com/skevetter/devpod/pkg/config"
+	"github.com/skevetter/devpod/pkg/ide/ideparse"
 	"github.com/spf13/cobra"
 )
 
@@ -53,7 +53,8 @@ func (cmd *ListCmd) Run(ctx context.Context) error {
 		return err
 	}
 
-	if cmd.Output == "plain" {
+	switch cmd.Output {
+	case "plain":
 		tableEntries := [][]string{}
 		for _, entry := range ideparse.AllowedIDEs {
 			tableEntries = append(tableEntries, []string{
@@ -69,7 +70,7 @@ func (cmd *ListCmd) Run(ctx context.Context) error {
 			"Name",
 			"Default",
 		}, tableEntries)
-	} else if cmd.Output == "json" {
+	case "json":
 		ides := []IDEWithDefault{}
 		for _, entry := range ideparse.AllowedIDEs {
 			ides = append(ides, IDEWithDefault{
@@ -83,7 +84,7 @@ func (cmd *ListCmd) Run(ctx context.Context) error {
 			return err
 		}
 		fmt.Print(string(out))
-	} else {
+	default:
 		return fmt.Errorf("unexpected output format, choose either json or plain. Got %s", cmd.Output)
 	}
 

@@ -7,11 +7,11 @@ import (
 	"os/exec"
 	"path/filepath"
 
-	copypkg "github.com/loft-sh/devpod/pkg/copy"
-	"github.com/loft-sh/devpod/pkg/devcontainer/config"
-	shellpkg "github.com/loft-sh/devpod/pkg/shell"
 	"github.com/loft-sh/log"
 	"github.com/loft-sh/ssh"
+	copypkg "github.com/skevetter/devpod/pkg/copy"
+	"github.com/skevetter/devpod/pkg/devcontainer/config"
+	shellpkg "github.com/skevetter/devpod/pkg/shell"
 )
 
 func NewContainerServer(addr string, workdir string, log log.Logger) (Server, error) {
@@ -95,8 +95,8 @@ func (s *containerServer) handler(sess ssh.Session) {
 			exitWithError(sess, err, s.log)
 			return
 		}
-		defer l.Close()
-		defer os.RemoveAll(tmpDir)
+		defer func() { _ = l.Close() }()
+		defer func() { _ = os.RemoveAll(tmpDir) }()
 
 		err = chownListener(l.Addr().String(), sess.User())
 		if err != nil {

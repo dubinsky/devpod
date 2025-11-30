@@ -9,4 +9,5 @@
 /main
 /profile.out
 /package-lock.json
-/tags
+/tagsvendor/
+node_modules/

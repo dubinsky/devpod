@@ -12,12 +12,12 @@ import (
 	managementv1 "github.com/loft-sh/api/v4/pkg/apis/management/v1"
 	storagev1 "github.com/loft-sh/api/v4/pkg/apis/storage/v1"
 	"github.com/loft-sh/apiserver/pkg/builders"
-	clientpkg "github.com/loft-sh/devpod/pkg/client"
-	"github.com/loft-sh/devpod/pkg/devcontainer/config"
-	devpodlog "github.com/loft-sh/devpod/pkg/log"
-	"github.com/loft-sh/devpod/pkg/platform"
-	"github.com/loft-sh/devpod/pkg/platform/kube"
 	"github.com/loft-sh/log"
+	clientpkg "github.com/skevetter/devpod/pkg/client"
+	"github.com/skevetter/devpod/pkg/devcontainer/config"
+	devpodlog "github.com/skevetter/devpod/pkg/log"
+	"github.com/skevetter/devpod/pkg/platform"
+	"github.com/skevetter/devpod/pkg/platform/kube"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -241,7 +241,7 @@ func printLogs(ctx context.Context, managementClient kube.Interface, workspace *
 	if err != nil {
 		return -1, fmt.Errorf("error getting task logs: %w", err)
 	}
-	defer logsReader.Close()
+	defer func() { _ = logsReader.Close() }()
 
 	// create scanner from logs reader
 	scanner := bufio.NewScanner(logsReader)
@@ -257,8 +257,8 @@ func printLogs(ctx context.Context, managementClient kube.Interface, workspace *
 	stderrStreamer, stderrDone := devpodlog.PipeJSONStream(logger.ErrorStreamOnly())
 	defer func() {
 		// close the streams
-		stdoutStreamer.Close()
-		stderrStreamer.Close()
+		_ = stdoutStreamer.Close()
+		_ = stderrStreamer.Close()
 
 		// wait for the streams to be closed
 		<-stdoutDone
@@ -276,17 +276,18 @@ func printLogs(ctx context.Context, managementClient kube.Interface, workspace *
 		}
 
 		// write message to stdout or stderr
-		if message.Type == StdoutData {
+		switch message.Type {
+		case StdoutData:
 			if _, err := stdoutStreamer.Write(message.Bytes); err != nil {
 				logger.Debugf("error read stdout: %v", err)
 				return 1, err
 			}
-		} else if message.Type == StderrData {
+		case StderrData:
 			if _, err := stderrStreamer.Write(message.Bytes); err != nil {
 				logger.Debugf("error read stderr: %v", err)
 				return 1, err
 			}
-		} else if message.Type == ExitCode {
+		case ExitCode:
 			logger.Debugf("exit code: %d", message.ExitCode)
 			return message.ExitCode, nil
 		}

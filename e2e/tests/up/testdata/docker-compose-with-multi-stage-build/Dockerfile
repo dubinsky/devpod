@@ -1,7 +1,6 @@
-FROM mcr.microsoft.com/vscode/devcontainers/ruby:3.2-bullseye AS base
+FROM golang:1.25-alpine AS base
 
-RUN apt update
-RUN apt install vim -y
+RUN apk add --no-cache vim
 
 FROM base
 

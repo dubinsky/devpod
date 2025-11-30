@@ -11,22 +11,22 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loft-sh/devpod/cmd/completion"
-	"github.com/loft-sh/devpod/cmd/flags"
-	"github.com/loft-sh/devpod/cmd/machine"
-	"github.com/loft-sh/devpod/pkg/agent"
-	client2 "github.com/loft-sh/devpod/pkg/client"
-	"github.com/loft-sh/devpod/pkg/config"
-	daemon "github.com/loft-sh/devpod/pkg/daemon/platform"
-	"github.com/loft-sh/devpod/pkg/gpg"
-	"github.com/loft-sh/devpod/pkg/port"
-	"github.com/loft-sh/devpod/pkg/provider"
-	devssh "github.com/loft-sh/devpod/pkg/ssh"
-	"github.com/loft-sh/devpod/pkg/tunnel"
-	workspace2 "github.com/loft-sh/devpod/pkg/workspace"
 	"github.com/loft-sh/log"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"github.com/skevetter/devpod/cmd/completion"
+	"github.com/skevetter/devpod/cmd/flags"
+	"github.com/skevetter/devpod/cmd/machine"
+	"github.com/skevetter/devpod/pkg/agent"
+	client2 "github.com/skevetter/devpod/pkg/client"
+	"github.com/skevetter/devpod/pkg/config"
+	daemon "github.com/skevetter/devpod/pkg/daemon/platform"
+	"github.com/skevetter/devpod/pkg/gpg"
+	"github.com/skevetter/devpod/pkg/port"
+	"github.com/skevetter/devpod/pkg/provider"
+	devssh "github.com/skevetter/devpod/pkg/ssh"
+	"github.com/skevetter/devpod/pkg/tunnel"
+	workspace2 "github.com/skevetter/devpod/pkg/workspace"
 	"github.com/spf13/cobra"
 	"golang.org/x/crypto/ssh"
 )
@@ -76,10 +76,7 @@ func NewSSHCmd(f *flags.GlobalFlags) *cobra.Command {
 				return err
 			}
 
-			localOnly := false
-			if cmd.Stdio {
-				localOnly = true
-			}
+			localOnly := cmd.Stdio
 
 			ctx := cobraCmd.Context()
 			client, err := workspace2.Get(ctx, devPodConfig, args, true, cmd.Owner, localOnly, log.Default.ErrorStreamOnly())
@@ -175,8 +172,8 @@ func (cmd *SSHCmd) jumpContainerTailscale(
 	if err != nil {
 		return err
 	}
-	defer toolSSHClient.Close()
-	defer sshClient.Close()
+	defer func() { _ = toolSSHClient.Close() }()
+	defer func() { _ = sshClient.Close() }()
 
 	// Forward ports if specified
 	if len(cmd.ForwardPorts) > 0 {
@@ -479,7 +476,7 @@ func (cmd *SSHCmd) startTunnel(ctx context.Context, devPodConfig *config.Config,
 	}
 	// start ssh
 	writer := log.ErrorStreamOnly().Writer(logrus.InfoLevel, false)
-	defer writer.Close()
+	defer func() { _ = writer.Close() }()
 
 	// check if we should do gpg agent forwarding
 	if cmd.GPGAgentForwarding || devPodConfig.ContextOption(config.ContextOptionGPGAgentForwarding) == "true" {
@@ -639,7 +636,7 @@ func (cmd *SSHCmd) setupGPGAgent(
 	}()
 
 	writer := log.ErrorStreamOnly().Writer(logrus.InfoLevel, false)
-	defer writer.Close()
+	defer func() { _ = writer.Close() }()
 	err = devssh.Run(ctx, containerClient, command, nil, writer, writer, nil)
 	if err != nil {
 		return fmt.Errorf("run gpg agent setup command: %w", err)

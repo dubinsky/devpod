@@ -11,7 +11,7 @@ import (
 	"time"
 
 	managementv1 "github.com/loft-sh/api/v4/pkg/apis/management/v1"
-	"github.com/loft-sh/devpod/pkg/platform"
+	"github.com/skevetter/devpod/pkg/platform"
 )
 
 const devPodClientPrefix = 0x01
@@ -154,7 +154,7 @@ func (c *LocalClient) doRequest(ctx context.Context, method string, path string,
 
 		return nil, err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode != http.StatusOK {
 		b, err := io.ReadAll(res.Body)
 		if err != nil {

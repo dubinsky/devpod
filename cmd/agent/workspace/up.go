@@ -9,26 +9,26 @@ import (
 	"path/filepath"
 	"strconv"
 
-	"github.com/loft-sh/devpod/cmd/flags"
-	"github.com/loft-sh/devpod/pkg/agent"
-	"github.com/loft-sh/devpod/pkg/agent/tunnel"
-	"github.com/loft-sh/devpod/pkg/agent/tunnelserver"
-	"github.com/loft-sh/devpod/pkg/binaries"
-	"github.com/loft-sh/devpod/pkg/client/clientimplementation"
-	"github.com/loft-sh/devpod/pkg/command"
-	"github.com/loft-sh/devpod/pkg/credentials"
-	agentdaemon "github.com/loft-sh/devpod/pkg/daemon/agent"
-	"github.com/loft-sh/devpod/pkg/devcontainer"
-	config2 "github.com/loft-sh/devpod/pkg/devcontainer/config"
-	"github.com/loft-sh/devpod/pkg/devcontainer/crane"
-	"github.com/loft-sh/devpod/pkg/dockercredentials"
-	"github.com/loft-sh/devpod/pkg/extract"
-	provider2 "github.com/loft-sh/devpod/pkg/provider"
-	"github.com/loft-sh/devpod/pkg/util"
-	"github.com/loft-sh/devpod/scripts"
 	"github.com/loft-sh/log"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"github.com/skevetter/devpod/cmd/flags"
+	"github.com/skevetter/devpod/pkg/agent"
+	"github.com/skevetter/devpod/pkg/agent/tunnel"
+	"github.com/skevetter/devpod/pkg/agent/tunnelserver"
+	"github.com/skevetter/devpod/pkg/binaries"
+	"github.com/skevetter/devpod/pkg/client/clientimplementation"
+	"github.com/skevetter/devpod/pkg/command"
+	"github.com/skevetter/devpod/pkg/credentials"
+	agentdaemon "github.com/skevetter/devpod/pkg/daemon/agent"
+	"github.com/skevetter/devpod/pkg/devcontainer"
+	config2 "github.com/skevetter/devpod/pkg/devcontainer/config"
+	"github.com/skevetter/devpod/pkg/devcontainer/crane"
+	"github.com/skevetter/devpod/pkg/dockercredentials"
+	"github.com/skevetter/devpod/pkg/dockerinstall"
+	"github.com/skevetter/devpod/pkg/extract"
+	provider2 "github.com/skevetter/devpod/pkg/provider"
+	"github.com/skevetter/devpod/pkg/util"
 	"github.com/spf13/cobra"
 )
 
@@ -211,11 +211,38 @@ func initWorkspace(ctx context.Context, cancel context.CancelFunc, workspaceInfo
 
 	// install docker in background
 	errChan := make(chan error, 2)
+	dockerPathChan := make(chan string, 1)
 	go func() {
-		if !workspaceInfo.Agent.IsDockerDriver() || workspaceInfo.Agent.Docker.Install == "false" {
+		if !workspaceInfo.Agent.IsDockerDriver() {
+			logger.Debug("Not a docker driver, skipping docker installation")
+			dockerPathChan <- ""
 			errChan <- nil
 		} else {
-			errChan <- installDocker(logger)
+			// Check if docker installation is explicitly disabled
+			installDisabled := false
+			if install, err := workspaceInfo.Agent.Docker.Install.Bool(); err == nil && !install {
+				installDisabled = true
+			}
+
+			// If docker does not exist, install it even if disabled
+			if !command.Exists("docker") {
+				if installDisabled {
+					logger.Debug("Docker not found but installation was disabled, installing anyway as it's required")
+				}
+				logger.Debug("Attempting to install docker")
+				dockerPath, err := installDocker(logger)
+				logger.Debugf("Docker installation result: path=%q, err=%v", dockerPath, err)
+				dockerPathChan <- dockerPath
+				errChan <- err
+			} else if installDisabled {
+				logger.Debug("Docker installation disabled and docker already exists")
+				dockerPathChan <- ""
+				errChan <- nil
+			} else {
+				logger.Debug("Docker already exists, skipping installation")
+				dockerPathChan <- ""
+				errChan <- nil
+			}
 		}
 	}()
 
@@ -234,6 +261,11 @@ func initWorkspace(ctx context.Context, cancel context.CancelFunc, workspaceInfo
 	}
 
 	// wait until docker is installed before configuring docker daemon
+	dockerPath := <-dockerPathChan
+	if dockerPath != "" && workspaceInfo.Agent.Docker.Path == "" {
+		workspaceInfo.Agent.Docker.Path = dockerPath
+		logger.Debugf("Set docker path to %s", dockerPath)
+	}
 	err = <-errChan
 	if err != nil {
 		return nil, nil, "", errors.Wrap(err, "install docker")
@@ -431,19 +463,18 @@ func prepareImage(workspaceDir, image string) error {
 	return nil
 }
 
-func installDocker(log log.Logger) (err error) {
+func installDocker(log log.Logger) (dockerPath string, err error) {
 	if !command.Exists("docker") {
 		writer := log.Writer(logrus.InfoLevel, false)
-		defer writer.Close()
+		defer func() { _ = writer.Close() }()
 
-		log.Debug("Installing Docker...")
+		log.Debug("Installing Docker")
 
-		shellCommand := exec.Command("sh", "-c", scripts.InstallDocker)
-		shellCommand.Stdout = writer
-		shellCommand.Stderr = writer
-		err = shellCommand.Run()
+		dockerPath, err = dockerinstall.Install(writer, writer)
+	} else {
+		dockerPath = "docker"
 	}
-	return err
+	return dockerPath, err
 }
 
 func configureDockerDaemon(ctx context.Context, log log.Logger) (err error) {

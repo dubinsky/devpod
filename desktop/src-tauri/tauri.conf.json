@@ -14,14 +14,11 @@
       "nsis": {
         "displayLanguageSelector": false,
         "installMode": "currentUser"
-      },
-      "signCommand": ".\\sign.bat %1"
+      }
     },
     "category": "DeveloperTool",
     "copyright": "",
-    "externalBin": [
-      "bin/devpod-cli"
-    ],
+    "externalBin": ["bin/devpod-cli"],
     "resources": [],
     "icon": [
       "icons/32x32.png",
@@ -68,13 +65,11 @@
   "identifier": "sh.loft.devpod",
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDE2Q0NGMDhDRDU0NEFGQjkKUldTNXIwVFZqUERNRnFvNmJxdTdnZndWRThqcGtJMzFMNE5reFpNM3J0cy92VExTL21IWkpnZDAK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDMzMkVCREU0RTZCRjQ1NEQKUldSTlJiL201TDB1TTl2MkxzRDB4ZVhyVlByWnBiOEZyUEFLeDFONnFvNENtVm9uVEw1NjJTeHAK",
       "windows": {
         "installMode": "passive"
       },
-      "endpoints": [
-        "https://github.com/skevetter/devpod/releases/latest/download/latest.json"
-      ]
+      "endpoints": ["https://github.com/skevetter/devpod/releases/latest/download/latest.json"]
     }
   },
   "app": {

@@ -6,9 +6,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/loft-sh/devpod/pkg/config"
-	"github.com/loft-sh/devpod/pkg/types"
 	"github.com/loft-sh/log"
+	"github.com/skevetter/devpod/pkg/config"
+	"github.com/skevetter/devpod/pkg/types"
 )
 
 func printUnusedUserValues(userValues map[string]string, options config.OptionDefinitions, log log.Logger) {
@@ -54,17 +54,18 @@ func validateUserValue(optionName, userValue string, option *types.Option) error
 	}
 
 	if option.Type != "" {
-		if option.Type == "number" {
+		switch option.Type {
+		case "number":
 			_, err := strconv.ParseInt(userValue, 10, 64)
 			if err != nil {
 				return fmt.Errorf("invalid value '%s' for option '%s', must be a number", userValue, optionName)
 			}
-		} else if option.Type == "boolean" {
+		case "boolean":
 			_, err := strconv.ParseBool(userValue)
 			if err != nil {
 				return fmt.Errorf("invalid value '%s' for option '%s', must be a boolean", userValue, optionName)
 			}
-		} else if option.Type == "duration" {
+		case "duration":
 			_, err := time.ParseDuration(userValue)
 			if err != nil {
 				return fmt.Errorf("invalid value '%s' for option '%s', must be a duration like 10s, 5m or 24h", userValue, optionName)

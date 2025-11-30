@@ -8,8 +8,8 @@ import (
 	"os"
 	"strings"
 
-	devpodhttp "github.com/loft-sh/devpod/pkg/http"
 	"github.com/pkg/errors"
+	devpodhttp "github.com/skevetter/devpod/pkg/http"
 	"github.com/spf13/cobra"
 )
 
@@ -65,7 +65,7 @@ func (cmd *RequestCmd) Run(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 300 {
 		out, _ := io.ReadAll(resp.Body)

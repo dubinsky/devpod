@@ -1,0 +1,21 @@
+name: Commit
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+jobs:
+  commits:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: 1Password/check-signed-commits-action@v1
+
+      - uses: wagoid/commitlint-github-action@v6
+        with:
+          failOnErrors: false

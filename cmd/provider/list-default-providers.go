@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/loft-sh/devpod/cmd/flags"
-	devpodhttp "github.com/loft-sh/devpod/pkg/http"
+	"github.com/skevetter/devpod/cmd/flags"
+	devpodhttp "github.com/skevetter/devpod/pkg/http"
 	"github.com/spf13/cobra"
 )
 
@@ -27,7 +27,7 @@ func getDevpodProviderList() error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	result, err := io.ReadAll(resp.Body)
 	if err != nil {

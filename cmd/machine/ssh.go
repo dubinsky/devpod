@@ -6,17 +6,17 @@ import (
 	"io"
 	"os"
 
-	"github.com/loft-sh/devpod/cmd/flags"
-	devagent "github.com/loft-sh/devpod/pkg/agent"
-	"github.com/loft-sh/devpod/pkg/client"
-	"github.com/loft-sh/devpod/pkg/config"
-	devssh "github.com/loft-sh/devpod/pkg/ssh"
-	devsshagent "github.com/loft-sh/devpod/pkg/ssh/agent"
-	"github.com/loft-sh/devpod/pkg/workspace"
 	"github.com/loft-sh/log"
 	"github.com/mattn/go-isatty"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"github.com/skevetter/devpod/cmd/flags"
+	devagent "github.com/skevetter/devpod/pkg/agent"
+	"github.com/skevetter/devpod/pkg/client"
+	"github.com/skevetter/devpod/pkg/config"
+	devssh "github.com/skevetter/devpod/pkg/ssh"
+	devsshagent "github.com/skevetter/devpod/pkg/ssh/agent"
+	"github.com/skevetter/devpod/pkg/workspace"
 	"github.com/spf13/cobra"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/term"
@@ -61,7 +61,7 @@ func (cmd *SSHCmd) Run(ctx context.Context, args []string) error {
 	}
 
 	writer := log.Default.ErrorStreamOnly().Writer(logrus.InfoLevel, false)
-	defer writer.Close()
+	defer func() { _ = writer.Close() }()
 
 	// Get the timeout from the context options
 	timeout := config.ParseTimeOption(devPodConfig, config.ContextOptionAgentInjectTimeout)
@@ -106,14 +106,14 @@ func StartSSHSession(ctx context.Context, user, command string, agentForwarding 
 	if err != nil {
 		return err
 	}
-	defer stdoutReader.Close()
-	defer stdoutWriter.Close()
+	defer func() { _ = stdoutReader.Close() }()
+	defer func() { _ = stdoutWriter.Close() }()
 	stdinReader, stdinWriter, err := os.Pipe()
 	if err != nil {
 		return err
 	}
-	defer stdinWriter.Close()
-	defer stdinReader.Close()
+	defer func() { _ = stdinWriter.Close() }()
+	defer func() { _ = stdinReader.Close() }()
 
 	// start ssh machine
 	errChan := make(chan error, 1)
@@ -125,7 +125,7 @@ func StartSSHSession(ctx context.Context, user, command string, agentForwarding 
 	if err != nil {
 		return err
 	}
-	defer sshClient.Close()
+	defer func() { _ = sshClient.Close() }()
 
 	return RunSSHSession(ctx, sshClient, agentForwarding, command, stderr)
 }
@@ -136,7 +136,7 @@ func RunSSHSession(ctx context.Context, sshClient *ssh.Client, agentForwarding b
 	if err != nil {
 		return err
 	}
-	defer session.Close()
+	defer func() { _ = session.Close() }()
 
 	// request agent forwarding
 	authSock := devsshagent.GetSSHAuthSocket()

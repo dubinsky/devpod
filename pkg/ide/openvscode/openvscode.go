@@ -8,18 +8,18 @@ import (
 	"runtime"
 	"strconv"
 
-	"github.com/loft-sh/devpod/pkg/command"
-	"github.com/loft-sh/devpod/pkg/config"
-	copy2 "github.com/loft-sh/devpod/pkg/copy"
-	"github.com/loft-sh/devpod/pkg/extract"
-	devpodhttp "github.com/loft-sh/devpod/pkg/http"
-	"github.com/loft-sh/devpod/pkg/ide"
-	"github.com/loft-sh/devpod/pkg/ide/vscode"
-	"github.com/loft-sh/devpod/pkg/single"
-	"github.com/loft-sh/devpod/pkg/util"
 	"github.com/loft-sh/log"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"github.com/skevetter/devpod/pkg/command"
+	"github.com/skevetter/devpod/pkg/config"
+	copy2 "github.com/skevetter/devpod/pkg/copy"
+	"github.com/skevetter/devpod/pkg/extract"
+	devpodhttp "github.com/skevetter/devpod/pkg/http"
+	"github.com/skevetter/devpod/pkg/ide"
+	"github.com/skevetter/devpod/pkg/ide/vscode"
+	"github.com/skevetter/devpod/pkg/single"
+	"github.com/skevetter/devpod/pkg/util"
 )
 
 const (
@@ -131,7 +131,7 @@ func (o *OpenVSCodeServer) Install() error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	err = extract.Extract(resp.Body, location, extract.StripLevels(1))
 	if err != nil {
@@ -185,7 +185,7 @@ func (o *OpenVSCodeServer) installExtensions() error {
 	}
 
 	out := o.log.Writer(logrus.InfoLevel, false)
-	defer out.Close()
+	defer func() { _ = out.Close() }()
 
 	binaryPath := filepath.Join(location, "bin", "openvscode-server")
 	for _, extension := range o.extensions {

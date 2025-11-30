@@ -13,12 +13,12 @@ import (
 	loftclient "github.com/loft-sh/api/v4/pkg/clientset/versioned"
 	typedmanagementv1 "github.com/loft-sh/api/v4/pkg/clientset/versioned/typed/management/v1"
 	informers "github.com/loft-sh/api/v4/pkg/informers/externalversions"
-	"github.com/loft-sh/devpod/pkg/platform"
-	"github.com/loft-sh/devpod/pkg/platform/client"
-	"github.com/loft-sh/devpod/pkg/platform/project"
-	"github.com/loft-sh/devpod/pkg/provider"
-	"github.com/loft-sh/devpod/pkg/ts"
 	"github.com/loft-sh/log"
+	"github.com/skevetter/devpod/pkg/platform"
+	"github.com/skevetter/devpod/pkg/platform/client"
+	"github.com/skevetter/devpod/pkg/platform/project"
+	"github.com/skevetter/devpod/pkg/provider"
+	"github.com/skevetter/devpod/pkg/ts"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
@@ -226,7 +226,7 @@ func (s *instanceStore) Add(instance *managementv1.DevPodWorkspaceInstance) {
 		},
 	}
 
-	key := s.key(instance.ObjectMeta.Namespace, instance.ObjectMeta.Name)
+	key := s.key(instance.Namespace, instance.Name)
 	s.m.Lock()
 	s.instances[key] = proInstance
 	s.m.Unlock()
@@ -245,7 +245,7 @@ func (s *instanceStore) Delete(instance *managementv1.DevPodWorkspaceInstance) {
 	}
 	s.m.Lock()
 	defer s.m.Unlock()
-	key := s.key(instance.ObjectMeta.Namespace, instance.ObjectMeta.Name)
+	key := s.key(instance.Namespace, instance.Name)
 	delete(s.instances, key)
 
 	// delete from metrics as well
@@ -274,7 +274,7 @@ func (s *instanceStore) convert(instance *ProWorkspaceInstance) *ProWorkspaceIns
 	s.metricsMu.RLock()
 	defer s.metricsMu.RUnlock()
 
-	metrics := s.metrics[s.key(instance.ObjectMeta.Namespace, instance.ObjectMeta.Name)]
+	metrics := s.metrics[s.key(instance.Namespace, instance.Name)]
 	if len(metrics) > 0 {
 		totalMetrics := len(metrics)
 		// calculate average latency

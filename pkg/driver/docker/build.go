@@ -7,14 +7,14 @@ import (
 	"io"
 	"strings"
 
-	"github.com/loft-sh/devpod/pkg/devcontainer/build"
-	"github.com/loft-sh/devpod/pkg/devcontainer/buildkit"
-	"github.com/loft-sh/devpod/pkg/devcontainer/config"
-	"github.com/loft-sh/devpod/pkg/devcontainer/feature"
-	"github.com/loft-sh/devpod/pkg/docker"
-	"github.com/loft-sh/devpod/pkg/provider"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"github.com/skevetter/devpod/pkg/devcontainer/build"
+	"github.com/skevetter/devpod/pkg/devcontainer/buildkit"
+	"github.com/skevetter/devpod/pkg/devcontainer/config"
+	"github.com/skevetter/devpod/pkg/devcontainer/feature"
+	"github.com/skevetter/devpod/pkg/docker"
+	"github.com/skevetter/devpod/pkg/provider"
 )
 
 func (d *dockerDriver) BuildDevContainer(
@@ -61,7 +61,7 @@ func (d *dockerDriver) BuildDevContainer(
 
 	// build image
 	writer := d.Log.Writer(logrus.InfoLevel, false)
-	defer writer.Close()
+	defer func() { _ = writer.Close() }()
 
 	// check if docker buildx exists
 	if options.Platform != "" {
@@ -125,13 +125,13 @@ func (d *dockerDriver) internalBuild(ctx context.Context, writer io.Writer, plat
 	if err != nil {
 		return errors.Wrap(err, "create docker client")
 	}
-	defer dockerClient.Close()
+	defer func() { _ = dockerClient.Close() }()
 
 	buildKitClient, err := buildkit.NewDockerClient(ctx, dockerClient)
 	if err != nil {
 		return errors.Wrap(err, "create buildkit client")
 	}
-	defer buildKitClient.Close()
+	defer func() { _ = buildKitClient.Close() }()
 
 	err = buildkit.Build(ctx, buildKitClient, writer, platform, options, d.Log)
 	if err != nil {

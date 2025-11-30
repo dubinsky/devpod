@@ -8,11 +8,11 @@ import (
 	"time"
 
 	"github.com/loft-sh/analytics-client/client"
-	devpodclient "github.com/loft-sh/devpod/pkg/client"
-	"github.com/loft-sh/devpod/pkg/config"
-	"github.com/loft-sh/devpod/pkg/version"
 	"github.com/loft-sh/log"
 	"github.com/moby/term"
+	devpodclient "github.com/skevetter/devpod/pkg/client"
+	"github.com/skevetter/devpod/pkg/config"
+	"github.com/skevetter/devpod/pkg/version"
 	"github.com/spf13/cobra"
 )
 
@@ -102,10 +102,7 @@ func (d *cliCollector) RecordCLI(err error) {
 		return
 	}
 	cmd := d.cmd.CommandPath()
-	isUI := false
-	if os.Getenv(UIEnvVar) == "true" {
-		isUI = true
-	}
+	isUI := os.Getenv(UIEnvVar) == "true"
 	// Ignore certain commands triggered by DevPod Desktop
 	if isUI {
 		for _, exception := range UIEventsExceptions {

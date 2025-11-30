@@ -13,11 +13,11 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/loft-sh/devpod/pkg/command"
-	"github.com/loft-sh/devpod/pkg/devcontainer/config"
-	"github.com/loft-sh/devpod/pkg/types"
 	"github.com/loft-sh/log"
 	"github.com/sirupsen/logrus"
+	"github.com/skevetter/devpod/pkg/command"
+	"github.com/skevetter/devpod/pkg/devcontainer/config"
+	"github.com/skevetter/devpod/pkg/types"
 )
 
 func RunLifecycleHooks(ctx context.Context, setupInfo *config.Result, log log.Logger) error {
@@ -162,9 +162,10 @@ func logPipeOutput(log log.Logger, pipe io.ReadCloser, level logrus.Level) {
 	scanner := bufio.NewScanner(pipe)
 	for scanner.Scan() {
 		line := scanner.Text()
-		if level == logrus.InfoLevel {
+		switch level {
+		case logrus.InfoLevel:
 			log.Info(line)
-		} else if level == logrus.ErrorLevel {
+		case logrus.ErrorLevel:
 			if containsError(line) {
 				log.Error(line)
 			} else {

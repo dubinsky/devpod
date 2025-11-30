@@ -10,15 +10,15 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"github.com/loft-sh/devpod/pkg/command"
-	"github.com/loft-sh/devpod/pkg/config"
-	copy2 "github.com/loft-sh/devpod/pkg/copy"
-	"github.com/loft-sh/devpod/pkg/extract"
-	devpodhttp "github.com/loft-sh/devpod/pkg/http"
-	"github.com/loft-sh/devpod/pkg/ide"
-	"github.com/loft-sh/devpod/pkg/util"
 	"github.com/loft-sh/log"
 	"github.com/pkg/errors"
+	"github.com/skevetter/devpod/pkg/command"
+	"github.com/skevetter/devpod/pkg/config"
+	copy2 "github.com/skevetter/devpod/pkg/copy"
+	"github.com/skevetter/devpod/pkg/extract"
+	devpodhttp "github.com/skevetter/devpod/pkg/http"
+	"github.com/skevetter/devpod/pkg/ide"
+	"github.com/skevetter/devpod/pkg/util"
 	"github.com/skratchdot/open-golang/open"
 )
 
@@ -151,7 +151,7 @@ func (o *GenericJetBrainsServer) extractArchive(fromPath string, toPath string) 
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	return extract.Extract(file, toPath, extract.StripLevels(1))
 }
@@ -176,7 +176,7 @@ func (o *GenericJetBrainsServer) download(targetFolder string, log log.Logger) (
 	if err != nil {
 		return "", errors.Wrap(err, "download binary")
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		return "", errors.Wrapf(err, "download binary returned status code %d", resp.StatusCode)
@@ -191,7 +191,7 @@ func (o *GenericJetBrainsServer) download(targetFolder string, log log.Logger) (
 	if err != nil {
 		return "", err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	_, err = io.Copy(file, &ide.ProgressReader{
 		Reader:    resp.Body,

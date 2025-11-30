@@ -13,14 +13,14 @@ import (
 
 	composetypes "github.com/compose-spec/compose-go/v2/types"
 	"github.com/joho/godotenv"
-	"github.com/loft-sh/devpod/pkg/compose"
-	"github.com/loft-sh/devpod/pkg/devcontainer/config"
-	"github.com/loft-sh/devpod/pkg/devcontainer/feature"
-	"github.com/loft-sh/devpod/pkg/devcontainer/metadata"
-	"github.com/loft-sh/devpod/pkg/dockerfile"
-	"github.com/loft-sh/devpod/pkg/driver"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"github.com/skevetter/devpod/pkg/compose"
+	"github.com/skevetter/devpod/pkg/devcontainer/config"
+	"github.com/skevetter/devpod/pkg/devcontainer/feature"
+	"github.com/skevetter/devpod/pkg/devcontainer/metadata"
+	"github.com/skevetter/devpod/pkg/dockerfile"
+	"github.com/skevetter/devpod/pkg/driver"
 	"gopkg.in/yaml.v2"
 )
 
@@ -392,7 +392,7 @@ func (r *runner) startContainer(
 
 	// start compose
 	writer := r.Log.Writer(logrus.InfoLevel, false)
-	defer writer.Close()
+	defer func() { _ = writer.Close() }()
 	err = composeHelper.Run(ctx, upArgs, nil, writer, writer)
 	if err != nil {
 		return nil, errors.Wrapf(err, "docker-compose run")
@@ -508,7 +508,7 @@ func (r *runner) buildAndExtendDockerCompose(
 			extendedDockerfileContent,
 		)
 
-		defer os.RemoveAll(filepath.Dir(extendedDockerfilePath))
+		defer func() { _ = os.RemoveAll(filepath.Dir(extendedDockerfilePath)) }()
 		err := os.WriteFile(extendedDockerfilePath, []byte(extendedDockerfileContent), 0600)
 		if err != nil {
 			return "", "", nil, "", errors.Wrap(err, "write Dockerfile with features")
@@ -549,7 +549,7 @@ func (r *runner) buildAndExtendDockerCompose(
 
 	// build image
 	writer := r.Log.Writer(logrus.InfoLevel, false)
-	defer writer.Close()
+	defer func() { _ = writer.Close() }()
 	r.Log.Debugf("Run %s %s", composeHelper.Command, strings.Join(buildArgs, " "))
 	err = composeHelper.Run(ctx, buildArgs, nil, writer, writer)
 	if err != nil {

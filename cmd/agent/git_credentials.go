@@ -12,12 +12,12 @@ import (
 	"path/filepath"
 	"strconv"
 
-	"github.com/loft-sh/devpod/cmd/agent/container"
-	"github.com/loft-sh/devpod/cmd/flags"
-	"github.com/loft-sh/devpod/pkg/gitcredentials"
-	devpodhttp "github.com/loft-sh/devpod/pkg/http"
-	"github.com/loft-sh/devpod/pkg/ts"
 	"github.com/loft-sh/log"
+	"github.com/skevetter/devpod/cmd/agent/container"
+	"github.com/skevetter/devpod/cmd/flags"
+	"github.com/skevetter/devpod/pkg/gitcredentials"
+	devpodhttp "github.com/skevetter/devpod/pkg/http"
+	"github.com/skevetter/devpod/pkg/ts"
 	"github.com/spf13/cobra"
 )
 
@@ -99,9 +99,9 @@ func getCredentialsFromWorkspaceServer(credentials *gitcredentials.GitCredential
 		if err != nil {
 			return nil
 		}
-		defer file.Close()
+		defer func() { _ = file.Close() }()
 
-		_, _ = file.WriteString(fmt.Sprintf("get credentials from workspace server: %v\n", credentialsErr))
+		_, _ = fmt.Fprintf(file, "get credentials from workspace server: %v\n", credentialsErr)
 		return nil
 	}
 
@@ -116,9 +116,9 @@ func getCredentialsFromLocalMachine(credentials *gitcredentials.GitCredentials, 
 		if err != nil {
 			return nil
 		}
-		defer file.Close()
+		defer func() { _ = file.Close() }()
 
-		_, _ = file.WriteString(fmt.Sprintf("get credentials from local machine: %v\n", credentialsErr))
+		_, _ = fmt.Fprintf(file, "get credentials from local machine: %v\n", credentialsErr)
 		return nil
 	}
 
@@ -135,7 +135,7 @@ func doRequest(httpClient *http.Client, credentials *gitcredentials.GitCredentia
 	if err != nil {
 		return nil, fmt.Errorf("error retrieving credentials from credentials server: %w", err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 
 	raw, err := io.ReadAll(response.Body)
 	if err != nil {

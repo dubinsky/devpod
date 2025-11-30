@@ -7,11 +7,11 @@ import (
 	"os"
 	"time"
 
-	"github.com/loft-sh/devpod/cmd/flags"
-	"github.com/loft-sh/devpod/pkg/config"
-	"github.com/loft-sh/devpod/pkg/devcontainer"
 	"github.com/loft-sh/log"
 	"github.com/sirupsen/logrus"
+	"github.com/skevetter/devpod/cmd/flags"
+	"github.com/skevetter/devpod/pkg/config"
+	"github.com/skevetter/devpod/pkg/devcontainer"
 	"github.com/spf13/cobra"
 )
 
@@ -64,7 +64,7 @@ func (cmd *GetWorkspaceConfigCommand) Run(ctx context.Context, devPodConfig *con
 	rawSource := args[0]
 
 	level := log.Default.GetLevel()
-	if cmd.GlobalFlags.Debug {
+	if cmd.Debug {
 		level = logrus.DebugLevel
 	}
 	var logger log.Logger = log.NewStdoutLogger(os.Stdin, os.Stdout, os.Stderr, level)

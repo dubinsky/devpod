@@ -14,12 +14,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loft-sh/devpod/cmd/agent/container"
-	"github.com/loft-sh/devpod/cmd/flags"
-	"github.com/loft-sh/devpod/pkg/dockercredentials"
-	devpodhttp "github.com/loft-sh/devpod/pkg/http"
-	"github.com/loft-sh/devpod/pkg/ts"
 	"github.com/loft-sh/log"
+	"github.com/skevetter/devpod/cmd/agent/container"
+	"github.com/skevetter/devpod/cmd/flags"
+	"github.com/skevetter/devpod/pkg/dockercredentials"
+	devpodhttp "github.com/skevetter/devpod/pkg/http"
+	"github.com/skevetter/devpod/pkg/ts"
 	"github.com/spf13/cobra"
 )
 
@@ -53,9 +53,10 @@ func (cmd *DockerCredentialsCmd) Run(ctx context.Context, args []string, log log
 	}
 
 	// we only handle get and list
-	if args[0] == "get" {
+	switch args[0] {
+	case "get":
 		return cmd.handleGet(log)
-	} else if args[0] == "list" {
+	case "list":
 		return cmd.handleList(log)
 	}
 
@@ -73,7 +74,7 @@ func (cmd *DockerCredentialsCmd) handleList(log log.Logger) error {
 		log.Errorf("Error retrieving list credentials: %v", err)
 		return nil
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 
 	raw, err := io.ReadAll(response.Body)
 	if err != nil {
@@ -137,7 +138,7 @@ func (cmd *DockerCredentialsCmd) handleGet(log log.Logger) error {
 		log.Errorf("Error retrieving credentials: %v", err)
 		return nil
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 
 	raw, err := io.ReadAll(response.Body)
 	if err != nil {
@@ -185,9 +186,9 @@ func getDockerCredentialsFromWorkspaceServer(credentials *dockercredentials.Cred
 		if err != nil {
 			return nil
 		}
-		defer file.Close()
+		defer func() { _ = file.Close() }()
 
-		_, _ = file.WriteString(fmt.Sprintf("get credentials from workspace server: %v\n", credentialsErr))
+		_, _ = fmt.Fprintf(file, "get credentials from workspace server: %v\n", credentialsErr)
 		return nil
 	}
 
@@ -204,7 +205,7 @@ func requestDockerCredentials(httpClient *http.Client, credentials *dockercreden
 	if err != nil {
 		return nil, fmt.Errorf("error retrieving credentials from credentials server: %w", err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 
 	raw, err := io.ReadAll(response.Body)
 	if err != nil {

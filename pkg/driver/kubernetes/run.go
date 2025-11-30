@@ -8,10 +8,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/loft-sh/devpod/pkg/devcontainer/config"
-	"github.com/loft-sh/devpod/pkg/driver"
-	provider2 "github.com/loft-sh/devpod/pkg/provider"
 	"github.com/pkg/errors"
+	"github.com/skevetter/devpod/pkg/devcontainer/config"
+	"github.com/skevetter/devpod/pkg/driver"
+	provider2 "github.com/skevetter/devpod/pkg/provider"
 	corev1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -222,8 +222,8 @@ func (k *KubernetesDriver) runContainer(
 	}
 
 	// create the pod manifest
-	pod.ObjectMeta.Name = id
-	pod.ObjectMeta.Labels = labels
+	pod.Name = id
+	pod.Labels = labels
 
 	pod.Spec.ServiceAccountName = serviceAccount
 	pod.Spec.NodeSelector = nodeSelector
@@ -430,8 +430,8 @@ func getVolumeMount(idx int, mount *config.Mount) corev1.VolumeMount {
 
 func getLabels(pod *corev1.Pod, rawLabels string) (map[string]string, error) {
 	labels := map[string]string{}
-	if pod.ObjectMeta.Labels != nil {
-		for k, v := range pod.ObjectMeta.Labels {
+	if pod.Labels != nil {
+		for k, v := range pod.Labels {
 			labels[k] = v
 		}
 	}

@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/loft-sh/devpod/cmd/flags"
-	"github.com/loft-sh/devpod/pkg/config"
-	"github.com/loft-sh/devpod/pkg/ide"
-	"github.com/loft-sh/devpod/pkg/ide/ideparse"
 	"github.com/loft-sh/log"
 	"github.com/loft-sh/log/table"
+	"github.com/skevetter/devpod/cmd/flags"
+	"github.com/skevetter/devpod/pkg/config"
+	"github.com/skevetter/devpod/pkg/ide"
+	"github.com/skevetter/devpod/pkg/ide/ideparse"
 	"github.com/spf13/cobra"
 )
 
@@ -62,7 +62,8 @@ func (cmd *OptionsCmd) Run(ctx context.Context, ide string) error {
 		return err
 	}
 
-	if cmd.Output == "plain" {
+	switch cmd.Output {
+	case "plain":
 		tableEntries := [][]string{}
 		for optionName, entry := range ideOptions {
 			value := values[optionName].Value
@@ -83,7 +84,7 @@ func (cmd *OptionsCmd) Run(ctx context.Context, ide string) error {
 			"Default",
 			"Value",
 		}, tableEntries)
-	} else if cmd.Output == "json" {
+	case "json":
 		options := map[string]optionWithValue{}
 		for optionName, entry := range ideOptions {
 			options[optionName] = optionWithValue{
@@ -97,7 +98,7 @@ func (cmd *OptionsCmd) Run(ctx context.Context, ide string) error {
 			return err
 		}
 		fmt.Print(string(out))
-	} else {
+	default:
 		return fmt.Errorf("unexpected output format, choose either json or plain. Got %s", cmd.Output)
 	}
 

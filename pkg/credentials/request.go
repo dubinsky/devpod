@@ -8,9 +8,9 @@ import (
 	"syscall"
 	"time"
 
-	devpodhttp "github.com/loft-sh/devpod/pkg/http"
 	"github.com/loft-sh/log"
 	"github.com/pkg/errors"
+	devpodhttp "github.com/skevetter/devpod/pkg/http"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/util/retry"
 )
@@ -34,7 +34,7 @@ func PostWithRetry(port int, endpoint string, body io.Reader, log log.Logger) ([
 			log.Errorf("Error calling %s: %v", endpoint, err)
 			return err
 		}
-		defer response.Body.Close()
+		defer func() { _ = response.Body.Close() }()
 
 		raw, err := io.ReadAll(response.Body)
 		if err != nil {

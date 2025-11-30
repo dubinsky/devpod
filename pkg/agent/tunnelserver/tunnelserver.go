@@ -12,21 +12,21 @@ import (
 	"strings"
 
 	"github.com/loft-sh/api/v4/pkg/devpod"
-	"github.com/loft-sh/devpod/pkg/agent/tunnel"
-	"github.com/loft-sh/devpod/pkg/devcontainer/config"
-	"github.com/loft-sh/devpod/pkg/dockercredentials"
-	"github.com/loft-sh/devpod/pkg/extract"
-	"github.com/loft-sh/devpod/pkg/gitcredentials"
-	"github.com/loft-sh/devpod/pkg/gitsshsigning"
-	"github.com/loft-sh/devpod/pkg/gpg"
-	"github.com/loft-sh/devpod/pkg/loftconfig"
-	"github.com/loft-sh/devpod/pkg/netstat"
-	"github.com/loft-sh/devpod/pkg/platform"
-	provider2 "github.com/loft-sh/devpod/pkg/provider"
-	"github.com/loft-sh/devpod/pkg/stdio"
 	"github.com/loft-sh/log"
 	"github.com/moby/patternmatcher/ignorefile"
 	perrors "github.com/pkg/errors"
+	"github.com/skevetter/devpod/pkg/agent/tunnel"
+	"github.com/skevetter/devpod/pkg/devcontainer/config"
+	"github.com/skevetter/devpod/pkg/dockercredentials"
+	"github.com/skevetter/devpod/pkg/extract"
+	"github.com/skevetter/devpod/pkg/gitcredentials"
+	"github.com/skevetter/devpod/pkg/gitsshsigning"
+	"github.com/skevetter/devpod/pkg/gpg"
+	"github.com/skevetter/devpod/pkg/loftconfig"
+	"github.com/skevetter/devpod/pkg/netstat"
+	"github.com/skevetter/devpod/pkg/platform"
+	provider2 "github.com/skevetter/devpod/pkg/provider"
+	"github.com/skevetter/devpod/pkg/stdio"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 )
@@ -349,15 +349,16 @@ func (t *tunnelServer) Ping(context.Context, *tunnel.Empty) (*tunnel.Empty, erro
 }
 
 func (t *tunnelServer) Log(ctx context.Context, message *tunnel.LogMessage) (*tunnel.Empty, error) {
-	if message.LogLevel == tunnel.LogLevel_DEBUG {
+	switch message.LogLevel {
+	case tunnel.LogLevel_DEBUG:
 		t.log.Debug(strings.TrimSpace(message.Message))
-	} else if message.LogLevel == tunnel.LogLevel_INFO {
+	case tunnel.LogLevel_INFO:
 		t.log.Info(strings.TrimSpace(message.Message))
-	} else if message.LogLevel == tunnel.LogLevel_WARNING {
+	case tunnel.LogLevel_WARNING:
 		t.log.Warn(strings.TrimSpace(message.Message))
-	} else if message.LogLevel == tunnel.LogLevel_ERROR {
+	case tunnel.LogLevel_ERROR:
 		t.log.Error(strings.TrimSpace(message.Message))
-	} else if message.LogLevel == tunnel.LogLevel_DONE {
+	case tunnel.LogLevel_DONE:
 		t.log.Done(strings.TrimSpace(message.Message))
 	}
 

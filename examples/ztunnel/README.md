@@ -1,7 +1,7 @@
 # Ztunnel example
 
 ```bash
-curl -L -o devpod "https://github.com/loft-sh/devpod/releases/latest/download/devpod-darwin-arm64" && sudo install -c -m 0755 devpod /usr/local/bin && rm -f devpod
+curl -L -o devpod "https://github.com/skevetter/devpod/releases/latest/download/devpod-darwin-arm64" && sudo install -c -m 0755 devpod /usr/local/bin && rm -f devpod
 ```
 
 Update the provider
@@ -85,7 +85,7 @@ Next command add nodeAffinity to make sure that the upstream ztunnel is not depl
 kubectl patch daemonset -n istio-system ztunnel --type=merge -p='{"spec":{"template":{"spec":{"affinity":{"nodeAffinity":{"requiredDuringSchedulingIgnoredDuringExecution":{"nodeSelectorTerms":[{"matchExpressions":[{"key":"upstream-ztunnel","operator":"In","values":["no"]}]}]}}}}}}}'
 ```
 
-You should see that the ztunnel is not deployed anymore. 
+You should see that the ztunnel is not deployed anymore.
 
 **NOTE**: To revert the previous command, run the following:
 
@@ -129,10 +129,3 @@ cargo clean
 
 RUST_LOG="debug" CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER="sudo -E" cargo build --bin=ztunnel --package=ztunnel --message-format=json
 ```
-
-
-
-
-
-
-
