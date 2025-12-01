@@ -36,20 +36,6 @@ jobs:
           - machineprovider
           - provider
           - ssh
-          - up-cleanup-fail
-          - up-cleanup-invalid
-          - up-docker-compose
-          - up-env-vars
-          - up-error-output
-          - up-git-commit
-          - up-git-private
-          - up-no-devcontainer
-          - up-podman
-          - up-recreate-local
-          - up-recreate-remote
-          - up-reset-remote
-          - up-subpath
-
     steps:
       - uses: actions/checkout@v6
 
@@ -81,15 +67,11 @@ jobs:
       matrix:
         label:
           - build
-          - up-docker
-          - up-docker-build
-          - up-docker-compose-build
-          - up-git-pr
-          - up-kubernetes
+          - up
         include:
           - label: build
             needs-kind: true
-          - label: up-kubernetes
+          - label: up
             needs-kind: true
 
     steps:
@@ -174,7 +156,7 @@ jobs:
 
   docker-install-test:
     name: Docker Install Test
-    needs: [compile-linux]
+    needs: [compile-linux, integration-test-wave-1, integration-test-wave-2]
     runs-on: ubuntu-latest
     steps:
       - uses: jlumbroso/free-disk-space@v1.3.1
