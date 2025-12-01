@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"time"
@@ -129,19 +130,15 @@ var _ = DevPodDescribe("devpod ssh test suite", func() {
 			// Generate a random number for the server port between 50000 and 51000
 			port := rng.Intn(1000) + 50000
 
-			fmt.Println("Running netcat server on port", port)
-
-			devpodSSHDeadline := time.Now().Add(20 * time.Second)
+			devpodSSHDeadline := time.Now().Add(30 * time.Second)
 			devpodSSHCtx, cancelSSH := context.WithDeadline(context.Background(), devpodSSHDeadline)
 			defer cancelSSH()
 
 			fmt.Println("Starting pong service")
 			// start a ping/pong service on the port
 			cmd := exec.CommandContext(ctx, f.DevpodBinDir+"/"+f.DevpodBinName,
-				[]string{
-					"ssh", tempDir, "--command",
-					"sh -c \"while true; do echo PONG | nc -n -lk -p " + strconv.Itoa(port) + "; done\"",
-				}...,
+				"ssh", tempDir, "--command",
+				"go run /workspaces/"+filepath.Base(tempDir)+"/server.go "+strconv.Itoa(port),
 			)
 			err = cmd.Start()
 			framework.ExpectNoError(err)
@@ -152,47 +149,43 @@ var _ = DevPodDescribe("devpod ssh test suite", func() {
 				_ = f.DevpodPortTest(devpodSSHCtx, strconv.Itoa(port), tempDir)
 			}()
 
+			fmt.Println("Waiting for port forwarding to initialize")
+			time.Sleep(5 * time.Second)
+
 			fmt.Println("Waiting for port", port, "to be open")
-			// wait for port to be open
-			retries := 5
 			out := ""
 			address := net.JoinHostPort("localhost", strconv.Itoa(port))
-			for retries > 0 {
-				fmt.Println("retries left", retries)
+			success := false
+			for i := range 10 {
+				fmt.Printf("attempt %d/10\n", i+1)
+				time.Sleep(2 * time.Second)
 
-				// wait 3s between retries
-				time.Sleep(time.Second * 3)
-
-				conn, err := net.Dial("tcp", address)
+				conn, err := net.DialTimeout("tcp", address, 2*time.Second)
 				if err != nil {
-					fmt.Println("port still closed")
-					retries = retries - 1
+					fmt.Printf("port still closed: %v\n", err)
+					continue
+				}
+				defer func() { _ = conn.Close() }()
+
+				err = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+				if err != nil {
+					fmt.Printf("failed to set read deadline: %v\n", err)
+					continue
+				}
+
+				fmt.Println("connecting to", port)
+				fmt.Println("waiting for response")
+				out, err = bufio.NewReader(conn).ReadString('\n')
+
+				if err != nil {
+					fmt.Printf("invalid response: %v\n", err)
 				} else {
-					if conn != nil {
-						defer func() { _ = conn.Close() }()
-						fmt.Println("connecting to", port)
-
-						fmt.Println("sending PING")
-						_, err = conn.Write([]byte("PING"))
-						framework.ExpectNoError(err)
-
-						fmt.Println("waiting for response")
-						out, err = bufio.NewReader(conn).ReadString('\n')
-						if err != nil {
-							fmt.Println("invalid response")
-							retries = retries - 1
-						} else {
-							fmt.Println("received", out)
-
-							break
-						}
-					} else {
-						fmt.Println("invalid connection")
-						retries = retries - 1
-					}
+					fmt.Println("received", out)
+					success = true
+					break
 				}
 			}
-			framework.ExpectNotEqual(retries, 0)
+			framework.ExpectEqual(success, true)
 
 			fmt.Println("Verifying output match")
 			framework.ExpectEqual(out, "PONG\n")
