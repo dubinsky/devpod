@@ -67,6 +67,29 @@ func SaveDevContainerJSON(config *DevContainerConfig) error {
 	return nil
 }
 
+// ParseDevContainerJSONFile parse the given a devcontainer.json file.
+func ParseDevContainerJSONFile(jsonFilePath string) (*DevContainerConfig, error) {
+	var err error
+	path, err := filepath.Abs(jsonFilePath)
+	if err != nil {
+		return nil, errors.Wrap(err, "make path absolute")
+	}
+
+	bytes, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	devContainer := &DevContainerConfig{}
+	err = json.Unmarshal(jsonc.ToJSON(bytes), devContainer)
+	if err != nil {
+		return nil, err
+	}
+	devContainer.Origin = path
+	return replaceLegacy(devContainer)
+}
+
+// ParseDevContainerJSON check if a file named devcontainer.json exists in the given directory and parse it if it does
 func ParseDevContainerJSON(folder, relativePath string) (*DevContainerConfig, error) {
 	path := ""
 	if relativePath != "" {
@@ -91,26 +114,7 @@ func ParseDevContainerJSON(folder, relativePath string) (*DevContainerConfig, er
 			}
 		}
 	}
-
-	var err error
-	path, err = filepath.Abs(path)
-	if err != nil {
-		return nil, errors.Wrap(err, "make path absolute")
-	}
-
-	bytes, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-
-	devContainer := &DevContainerConfig{}
-	err = json.Unmarshal(jsonc.ToJSON(bytes), devContainer)
-	if err != nil {
-		return nil, err
-	}
-
-	devContainer.Origin = path
-	return replaceLegacy(devContainer)
+	return ParseDevContainerJSONFile(path)
 }
 
 func replaceLegacy(config *DevContainerConfig) (*DevContainerConfig, error) {

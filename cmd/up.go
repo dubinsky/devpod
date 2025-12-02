@@ -82,6 +82,13 @@ func NewUpCmd(f *flags.GlobalFlags) *cobra.Command {
 		Use:   "up [flags] [workspace-path|workspace-name]",
 		Short: "Starts a new workspace",
 		RunE: func(cobraCmd *cobra.Command, args []string) error {
+			if cmd.ExtraDevContainerPath != "" {
+				absExtraPath, err := filepath.Abs(cmd.ExtraDevContainerPath)
+				if err != nil {
+					return err
+				}
+				cmd.ExtraDevContainerPath = absExtraPath
+			}
 			devPodConfig, err := config.LoadConfig(cmd.Context, cmd.Provider)
 			if err != nil {
 				return err
@@ -98,6 +105,11 @@ func NewUpCmd(f *flags.GlobalFlags) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("prepare workspace client: %w", err)
 			}
+
+			if cmd.ExtraDevContainerPath != "" && client.Provider() != "docker" {
+				return fmt.Errorf("extra devcontainer file is only supported with local provider")
+			}
+
 			telemetry.CollectorCLI.SetClient(client)
 
 			return cmd.Run(ctx, devPodConfig, client, args, logger)
@@ -113,6 +125,7 @@ func NewUpCmd(f *flags.GlobalFlags) *cobra.Command {
 	upCmd.Flags().StringArrayVar(&cmd.IDEOptions, "ide-option", []string{}, "IDE option in the form KEY=VALUE")
 	upCmd.Flags().StringVar(&cmd.DevContainerImage, "devcontainer-image", "", "The container image to use, this will override the devcontainer.json value in the project")
 	upCmd.Flags().StringVar(&cmd.DevContainerPath, "devcontainer-path", "", "The path to the devcontainer.json relative to the project")
+	upCmd.Flags().StringVar(&cmd.ExtraDevContainerPath, "extra-devcontainer-path", "", "The path to an additional devcontainer.json file to override original devcontainer.json")
 	upCmd.Flags().StringArrayVar(&cmd.ProviderOptions, "provider-option", []string{}, "Provider option in the form KEY=VALUE")
 	upCmd.Flags().BoolVar(&cmd.Reconfigure, "reconfigure", false, "Reconfigure the options for this workspace. Only supported in DevPod Pro right now.")
 	upCmd.Flags().BoolVar(&cmd.Recreate, "recreate", false, "If true will remove any existing containers and recreate them")

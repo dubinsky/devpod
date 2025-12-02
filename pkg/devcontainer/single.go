@@ -79,6 +79,17 @@ func (r *runner) runSingleContainer(
 			return nil, err
 		}
 
+		if options.ExtraDevContainerPath != "" {
+			if imageMetadataConfig == nil {
+				imageMetadataConfig = &config.ImageMetadataConfig{}
+			}
+			extraConfig, err := config.ParseDevContainerJSONFile(options.ExtraDevContainerPath)
+			if err != nil {
+				return nil, err
+			}
+			config.AddConfigToImageMetadata(extraConfig, imageMetadataConfig)
+		}
+
 		mergedConfig, err = config.MergeConfiguration(parsedConfig.Config, imageMetadataConfig.Config)
 		if err != nil {
 			return nil, errors.Wrap(err, "merge config")
@@ -101,9 +112,10 @@ func (r *runner) runSingleContainer(
 		// we need to build the container
 		buildInfo, err := r.build(ctx, parsedConfig, substitutionContext, provider2.BuildOptions{
 			CLIOptions: provider2.CLIOptions{
-				PrebuildRepositories: options.PrebuildRepositories,
-				ForceDockerless:      options.ForceDockerless,
-				Platform:             options.Platform,
+				PrebuildRepositories:  options.PrebuildRepositories,
+				ForceDockerless:       options.ForceDockerless,
+				Platform:              options.Platform,
+				ExtraDevContainerPath: options.ExtraDevContainerPath,
 			},
 			NoBuild:       options.NoBuild,
 			RegistryCache: options.RegistryCache,
