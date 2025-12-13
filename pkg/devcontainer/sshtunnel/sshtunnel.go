@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/loft-sh/log"
 
@@ -16,6 +17,7 @@ import (
 	config2 "github.com/skevetter/devpod/pkg/devcontainer/config"
 	devssh "github.com/skevetter/devpod/pkg/ssh"
 	devsshagent "github.com/skevetter/devpod/pkg/ssh/agent"
+	"golang.org/x/crypto/ssh"
 )
 
 type AgentInjectFunc func(context.Context, string, *os.File, *os.File, io.WriteCloser) error
@@ -100,14 +102,33 @@ func ExecuteCommand(
 		defer func() { _ = sshClient.Close() }()
 
 		log.Debugf("SSH client created")
+		log.Debugf("Waiting for SSH server to be ready")
+		var sess *ssh.Session
+		timeout := time.After(60 * time.Second)
+		ticker := time.NewTicker(500 * time.Millisecond)
+		defer ticker.Stop()
 
-		sess, err := sshClient.NewSession()
-		if err != nil {
-			errChan <- fmt.Errorf("create ssh session %w", err)
+		for {
+			select {
+			case <-timeout:
+				errChan <- errors.New("SSH server not ready after 60 seconds")
+				return
+			case <-cancelCtx.Done():
+				errChan <- cancelCtx.Err()
+				return
+			case <-ticker.C:
+				var err error
+				sess, err = sshClient.NewSession()
+				if err == nil {
+					log.Debugf("SSH session created")
+					goto sessionReady
+				}
+				log.Debugf("SSH server not ready %v", err)
+			}
 		}
-		defer func() { _ = sess.Close() }()
 
-		log.Debugf("SSH session created")
+	sessionReady:
+		defer func() { _ = sess.Close() }()
 
 		identityAgent := devsshagent.GetSSHAuthSocket()
 		if identityAgent != "" {
