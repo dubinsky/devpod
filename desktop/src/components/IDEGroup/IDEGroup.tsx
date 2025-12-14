@@ -5,6 +5,7 @@ import {
   MenuItem,
   PlacementWithLogical,
   Popover,
+  PopoverArrow,
   PopoverContent,
   PopoverTrigger,
   Portal,
@@ -42,8 +43,8 @@ export function IDEGroup({
   return (
     <Popover
       isOpen={popoverHover || triggerHover}
-      placement={placement ?? "right-end"}
-      offset={offset ?? [100, 0]}>
+      placement={placement ?? "right-start"}
+      offset={offset}>
       <PopoverTrigger>
         <MenuItem ref={triggerRef} isDisabled={disabled}>
           <HStack width="full" justifyContent="space-between">
@@ -54,6 +55,7 @@ export function IDEGroup({
       </PopoverTrigger>
       <Portal>
         <PopoverContent zIndex="popover" width="fit-content" ref={popoverRef}>
+          <PopoverArrow />
           {ides?.map((ide) => (
             <IDEItem key={ide.name} ide={ide} onItemClick={onItemClick} disabled={disabled} />
           ))}

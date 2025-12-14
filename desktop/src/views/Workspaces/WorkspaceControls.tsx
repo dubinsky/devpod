@@ -11,6 +11,7 @@ import {
   MenuItem,
   MenuList,
   Popover,
+  PopoverArrow,
   PopoverContent,
   PopoverTrigger,
   Portal,
@@ -164,8 +165,7 @@ export function WorkspaceControls({
             <MenuList>
               <Popover
                 isOpen={isStartWithHovering || isPopoverHovering || ideGroupHovered}
-                placement="right"
-                offset={[100, 0]}>
+                placement="right-start">
                 <PopoverTrigger>
                   <MenuItem
                     ref={startWithRef}
@@ -179,6 +179,7 @@ export function WorkspaceControls({
                 </PopoverTrigger>
                 <Portal>
                   <PopoverContent zIndex="popover" width="fit-content" ref={popoverContentRef}>
+                    <PopoverArrow />
                     {groupedIDEs?.primary.map((ide) => (
                       <MenuItem
                         isDisabled={isOpenDisabled || isLoading}
