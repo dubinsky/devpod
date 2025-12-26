@@ -465,8 +465,8 @@ function useOptions(
 
       const newOptions: DefaultValues<TFieldValues> = {}
       for (const option in data) {
-        if (data[option]?.value) {
-          newOptions[option] = data[option]?.value ?? undefined
+        if (data[option]?.value !== undefined) {
+          ;(newOptions as Record<string, any>)[option] = data[option].value
         }
       }
 
