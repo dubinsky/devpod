@@ -87,11 +87,11 @@ func ExecuteCommand(
 	if err != nil {
 		return nil, err
 	}
+	defer func() { _ = gRPCConnStdoutWriter.Close() }()
 	gRPCConnStdinReader, gRPCConnStdinWriter, err := os.Pipe()
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = gRPCConnStdoutWriter.Close() }()
 	defer func() { _ = gRPCConnStdinWriter.Close() }()
 
 	// connect to container
@@ -105,11 +105,11 @@ func ExecuteCommand(
 			errChan <- fmt.Errorf("create ssh client %w", err)
 			return
 		}
-		defer log.Debugf("connection to SSH server closed")
-		defer func() { _ = sshClient.Close() }()
-
 		log.Debugf("SSH client created")
-		log.Debugf("waiting for SSH server to be ready")
+		defer func() {
+			_ = sshClient.Close()
+			log.Debug("SSH client closed")
+		}()
 		var sess *ssh.Session
 		timeout := time.After(60 * time.Second)
 		ticker := time.NewTicker(500 * time.Millisecond)
@@ -126,17 +126,20 @@ func ExecuteCommand(
 			case <-ticker.C:
 				var err error
 				sess, err = sshClient.NewSession()
-				if err == nil {
-					log.Debug("SSH session created")
-					goto sessionReady
+				if err != nil {
+					log.WithFields(logrus.Fields{"error": err}).Debug("SSH server not ready")
+					continue
 				}
-				log.WithFields(logrus.Fields{"error": err}).Debug("SSH server not ready")
+				goto sessionReady
 			}
 		}
 
 	sessionReady:
-		defer func() { _ = sess.Close() }()
-
+		log.Debug("SSH session created")
+		defer func() {
+			_ = sess.Close()
+			log.Debug("SSH session closed")
+		}()
 		identityAgent := devsshagent.GetSSHAuthSocket()
 		if identityAgent != "" {
 			log.WithFields(logrus.Fields{"socket": identityAgent}).Debug("forwarding SSH agent")
@@ -150,18 +153,16 @@ func ExecuteCommand(
 			}
 		}
 
-		stdoutWriter := log.Writer(logrus.InfoLevel, false)
-		defer func() { _ = stdoutWriter.Close() }()
-
 		var stderrBuf bytes.Buffer
-		stderrWriter := io.MultiWriter(&stderrBuf, &tunnelLogWriter{logger: log})
+		tunnelWriter := io.MultiWriter(&stderrBuf, &tunnelLogWriter{logger: log})
+
 		log.WithFields(logrus.Fields{"command": command}).Debug("running agent command in SSH tunnel")
-		err = devssh.Run(ctx, sshClient, command, gRPCConnStdinReader, gRPCConnStdoutWriter, stderrWriter, nil)
+		err = devssh.Run(ctx, sshClient, command, gRPCConnStdinReader, gRPCConnStdoutWriter, tunnelWriter, nil)
 		if err != nil {
 			if stderrBuf.Len() > 0 {
-				errChan <- fmt.Errorf("run agent command %w\n%s", err, stderrBuf.String())
+				errChan <- fmt.Errorf("run agent command failed %s", stderrBuf.String())
 			} else {
-				errChan <- fmt.Errorf("run agent command %w", err)
+				errChan <- fmt.Errorf("run agent command failed %w", err)
 			}
 		} else {
 			errChan <- nil
