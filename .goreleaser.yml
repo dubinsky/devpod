@@ -8,18 +8,22 @@ builds:
   - id: devpod
     hooks:
       pre:
-        - sh -c 'go test $(go list ./... | grep -v -e /test -e /e2e) -race -coverprofile=dist/profile.out -covermode=atomic'
+        - sh -c 'CGO_ENABLED=1 go test $(go list ./... | grep -v -e /test -e /e2e) -race -coverprofile=dist/profile.out -covermode=atomic'
     goos: [linux, darwin, windows]
     goarch: [amd64, arm64]
-    binary: devpod-cli
+    binary: devpod
 
   - id: devpod-linux
     hooks:
       pre:
-        - sh -c 'go test $(go list ./... | grep -v -e /test -e /e2e) -race -coverprofile=dist/profile.out -covermode=atomic'
+        - sh -c 'CGO_ENABLED=1 go test $(go list ./... | grep -v -e /test -e /e2e) -race -coverprofile=dist/profile.out -covermode=atomic'
     goos: [linux]
     goarch: [amd64, arm64]
-    binary: devpod-cli
+    binary: devpod-{{ .Os }}-{{ .Arch }}
+    ldflags:
+      - -s -w
+    env:
+      - CGO_ENABLED=0
 
   - id: devpod-darwin
     hooks:
@@ -27,17 +31,21 @@ builds:
         - sh -c 'go test $(go list ./... | grep -v -e /test -e /e2e) -race -coverprofile=dist/profile.out -covermode=atomic'
     goos: [darwin]
     goarch: [amd64, arm64]
-    binary: devpod-cli
+    binary: devpod-{{ .Os }}-{{ .Arch }}
 
   - id: devpod-windows
     goos: [windows]
     goarch: [amd64, arm64]
-    binary: devpod-cli
+    binary: devpod-{{ .Os }}-{{ .Arch }}
+    ldflags:
+      - -s -w
+    env:
+      - CGO_ENABLED=0
 
   - id: devpod-dev
-    goos: [linux, darwin, windows]
-    goarch: [amd64, arm64]
-    binary: devpod-dev-cli
+    goos: [linux]
+    goarch: [amd64]
+    binary: devpod-{{ .Os }}-{{ .Arch }}-dev
 archives:
   - formats: [tar.gz]
     format_overrides:
