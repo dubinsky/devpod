@@ -6,14 +6,16 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"runtime"
 
 	"github.com/sirupsen/logrus"
 	"github.com/skevetter/devpod/pkg/command"
-	"github.com/skevetter/devpod/pkg/config"
+	config2 "github.com/skevetter/devpod/pkg/config"
 	copy2 "github.com/skevetter/devpod/pkg/copy"
+	"github.com/skevetter/devpod/pkg/devcontainer/config"
 	"github.com/skevetter/devpod/pkg/extract"
 	devpodhttp "github.com/skevetter/devpod/pkg/http"
 	"github.com/skevetter/devpod/pkg/ide"
@@ -32,7 +34,7 @@ func getLatestDownloadURL(code string, platform string) string {
 	return fmt.Sprintf("https://download.jetbrains.com/product?code=%s&platform=%s", code, platform)
 }
 
-func getDownloadURLs(options ide.Options, values map[string]config.OptionValue, productCode string, templateAmd64 string, templateArm64 string) (string, string) {
+func getDownloadURLs(options ide.Options, values map[string]config2.OptionValue, productCode string, templateAmd64 string, templateArm64 string) (string, string) {
 	version := options.GetValue(values, VersionOption)
 	var amd64Download, arm64Download string
 	if version == "latest" {
@@ -93,7 +95,7 @@ func (o *GenericJetBrainsServer) getDownloadFolder() string {
 	return fmt.Sprintf("/var/devpod/%s", o.options.ID)
 }
 
-func (o *GenericJetBrainsServer) Install() error {
+func (o *GenericJetBrainsServer) Install(setupInfo *config.Result) error {
 	o.log.WithFields(logrus.Fields{
 		"displayName": o.options.DisplayName,
 		"id":          o.options.ID,
@@ -139,6 +141,31 @@ func (o *GenericJetBrainsServer) Install() error {
 		"displayName": o.options.DisplayName,
 		"id":          o.options.ID,
 	}).Info("installed backend")
+
+	remoteDevServerDir := path.Join(targetLocation, "bin")
+	jetBrainsConfiguration := config.GetJetBrainsConfiguration(setupInfo.MergedConfig)
+
+	for _, pluginId := range jetBrainsConfiguration.Plugins {
+		o.log.WithFields(logrus.Fields{
+			"pluginId": pluginId,
+		}).Info("installing JetBrains plugin")
+		installPlugin := exec.Command(
+			"./remote-dev-server.sh",
+			"installPlugins",
+			"--give-consent-to-use-third-party-plugins",
+			pluginId,
+		)
+		installPlugin.Dir = remoteDevServerDir
+		out, err := installPlugin.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("error installing JetBrains plugin '%s' %w", pluginId, command.WrapCommandError(out, err))
+		}
+		o.log.Debugf("remote-dev-server.sh output: %s", out)
+		o.log.WithFields(logrus.Fields{
+			"pluginId": pluginId,
+		}).Info("installed JetBrains plugin")
+	}
+
 	return nil
 }
 
@@ -192,7 +219,7 @@ func (o *GenericJetBrainsServer) download(targetFolder string, log log.Logger) (
 	defer log.WithFields(logrus.Fields{
 		"displayName": o.options.DisplayName,
 		"id":          o.options.ID,
-	}).Debug("downloaded archive")
+	}).Info("downloaded archive")
 	resp, err := devpodhttp.GetHTTPClient().Get(downloadURL)
 	if err != nil {
 		return "", fmt.Errorf("download binary %w", err)
