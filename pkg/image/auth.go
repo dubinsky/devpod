@@ -6,13 +6,14 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	ecr "github.com/awslabs/amazon-ecr-credential-helper/ecr-login"
 	"github.com/chrismellard/docker-credential-acr-env/pkg/credhelper"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/go-containerregistry/pkg/authn"
 	kubernetesauth "github.com/google/go-containerregistry/pkg/authn/kubernetes"
 	"github.com/google/go-containerregistry/pkg/v1/google"
-	"gopkg.in/square/go-jose.v2/jwt"
 )
 
 var (
@@ -24,6 +25,7 @@ const tokenFileLocation = "/var/run/secrets/kubernetes.io/serviceaccount/token"
 
 // See https://github.com/kubernetes/kubernetes/blob/30ae12d018697d3c5f04e225b11f242f5310e097/pkg/serviceaccount/claims.go#L55
 type privateClaims struct {
+	jwt.RegisteredClaims
 	Kubernetes kubernetesClaim `json:"kubernetes.io"`
 }
 
@@ -90,21 +92,20 @@ type podMetadata struct {
 }
 
 func getPodMetadata(token []byte) (podMetadata, error) {
-	t, err := jwt.ParseSigned(string(token))
+	tokenStr := strings.TrimSpace(string(token))
+	parser := jwt.NewParser(jwt.WithoutClaimsValidation())
+	claims := &privateClaims{}
+
+	_, err := parser.ParseWithClaims(tokenStr, claims, func(token *jwt.Token) (any, error) {
+		return nil, nil
+	})
 	if err != nil {
-		return podMetadata{}, fmt.Errorf("failed to parse kubernetes service account token %w", err)
+		return podMetadata{}, fmt.Errorf("failed to parse kubernetes service account token: %w", err)
 	}
 
-	privateClaims := privateClaims{}
-	err = t.UnsafeClaimsWithoutVerification(&privateClaims)
-	if err != nil {
-		return podMetadata{}, fmt.Errorf("failed to get claims from kubernetes service account token %w", err)
-	}
-
-	kubeClaim := privateClaims.Kubernetes
-	// get serviceaccount name and imagepullsecret
+	kubeClaim := claims.Kubernetes
 	if kubeClaim.Namespace == "" || kubeClaim.Svcacct.Name == "" {
-		return podMetadata{}, fmt.Errorf("failed to retrieve pod metadata from kubernetes service account token %w", err)
+		return podMetadata{}, fmt.Errorf("failed to retrieve pod metadata from kubernetes service account token")
 	}
 
 	return podMetadata{
