@@ -139,6 +139,12 @@ func setOptions(
 		return nil, err
 	}
 
+	userOptions = options2.PropagateOptionsFromEnvironment(
+		userOptions,
+		provider.Options,
+		flags.DevpodEnvPrefix+"PROVIDER_"+provider.Name+"_",
+	)
+
 	// parse options
 	options, err := provider2.ParseOptions(userOptions)
 	if err != nil {
