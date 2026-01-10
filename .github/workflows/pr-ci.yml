@@ -272,21 +272,16 @@ jobs:
         shell: bash
         working-directory: ./e2e
         run: |
+          TEMP_DIR="${{ runner.temp }}"
           if [ "${{ runner.os }}" == "Windows" ]; then
-            TEMP_DIR="${{ runner.temp }}"
             TEMP_DIR="${TEMP_DIR//\\//}"
-            ls -R "$TEMP_DIR/devpod-bin/"
-            mkdir -p ./bin/
-            find "$TEMP_DIR/devpod-bin/" -name "devpod-${{ steps.os.outputs.runner_os }}-amd64.exe" -exec mv {} ./bin/devpod-${{ steps.os.outputs.runner_os }}-amd64.exe \;
-            ls -R ./bin/
-          else
-            ls -R "${{ runner.temp }}/devpod-bin/"
-            mkdir -p ./bin/
-            find "${{ runner.temp }}/devpod-bin/" -name "devpod-${{ steps.os.outputs.runner_os }}-amd64" -exec mv {} ./bin/devpod-${{ steps.os.outputs.runner_os }}-amd64 \;
-            find "${{ runner.temp }}/devpod-bin/" -name "devpod-${{ steps.os.outputs.runner_os }}-arm64" -exec mv {} ./bin/devpod-${{ steps.os.outputs.runner_os }}-arm64 \;
-            chmod +x "./bin/devpod-${{ steps.os.outputs.runner_os }}-amd64"
-            ls -R ./bin/
           fi
+
+          ls -R "$TEMP_DIR/devpod-bin/"
+          mkdir -p ./bin/
+          find "$TEMP_DIR/devpod-bin/" -type f -name "devpod-*" -exec cp {} ./bin \;
+          find ./bin -name "devpod-*" -exec chmod +x {} \;
+          ls -R ./bin/
 
       - name: generate uuid
         if: matrix.install-kind == true && runner.os != 'Windows' && (matrix.requires-secret == false || needs.can-read-secret.outputs.secret-set == 'true')
@@ -368,29 +363,25 @@ jobs:
           - arch: amd64
             target: x86_64-unknown-linux-gnu
             runner: ubuntu-latest
-            tauri_config_args: "--config src-tauri/tauri-flatpak.conf.json --bundles appimage,deb,updater"
             tauri_include_updater_json: true
             tauri_ci: true
 
           - arch: amd64
             target: x86_64-apple-darwin
             runner: macos-latest
-            tauri_config_args: ""
-            tauri_include_updater_json: false
+            tauri_include_updater_json: true
             tauri_ci: true
 
           - arch: arm64
             target: aarch64-apple-darwin
             runner: macos-latest
-            tauri_config_args: ""
-            tauri_include_updater_json: false
+            tauri_include_updater_json: true
             tauri_ci: false # https://github.com/tauri-apps/tauri/issues/3055
 
           - arch: amd64
             target: x86_64-pc-windows-msvc
             runner: windows-latest
-            tauri_config_args: ""
-            tauri_include_updater_json: false
+            tauri_include_updater_json: true
             tauri_ci: true
     runs-on: ${{ matrix.runner }}
     steps:
@@ -424,7 +415,7 @@ jobs:
       - name: download CLI artifacts
         uses: actions/download-artifact@v7
         with:
-          pattern: devpod-${{ steps.os.outputs.runner_os }}
+          pattern: devpod-*
           path: ${{ runner.temp }}/devpod-bin/
           merge-multiple: true
 
@@ -432,19 +423,24 @@ jobs:
         shell: bash
         working-directory: ./desktop/src-tauri
         run: |
+          TEMP_DIR="${{ runner.temp }}"
           if [ "${{ runner.os }}" == "Windows" ]; then
-            TEMP_DIR="${{ runner.temp }}"
             TEMP_DIR="${TEMP_DIR//\\//}"
-            ls -R "$TEMP_DIR/devpod-bin/"
-            mkdir -p ./bin/
-            find "$TEMP_DIR/devpod-bin/" -name "devpod-${{ steps.os.outputs.runner_os }}-${{ matrix.arch }}.exe" -exec cp {} ./bin/devpod-cli-${{ matrix.target }}.exe \;
-          else
-            ls -R "${{ runner.temp }}/devpod-bin/"
-            mkdir -p ./bin/
-            find "${{ runner.temp }}/devpod-bin/" -name "devpod-${{ steps.os.outputs.runner_os }}-${{ matrix.arch }}" -exec cp {} ./bin/devpod-cli-${{ matrix.target }} \;
-            chmod +x "./bin/devpod-cli-${{ matrix.target }}"
-            ls -R ./bin/
           fi
+
+          ls -R "$TEMP_DIR/devpod-bin/"
+          mkdir -p ./bin/
+          find "$TEMP_DIR/devpod-bin/" -type f -name "devpod-*" -exec cp {} ./bin \;
+          find ./bin -type f -name "devpod-*" -exec chmod +x {} \;
+
+          find ./bin -type f -name "devpod-linux-amd64" -exec mv {} ./bin/devpod-cli-x86_64-unknown-linux-gnu \;
+          find ./bin -type f -name "devpod-linux-arm64" -exec mv {} ./bin/devpod-cli-aarch64-unknown-linux-gnu \;
+          find ./bin -type f -name "devpod-darwin-amd64" -exec mv {} ./bin/devpod-cli-x86_64-apple-darwin \;
+          find ./bin -type f -name "devpod-darwin-arm64" -exec mv {} ./bin/devpod-cli-aarch64-apple-darwin \;
+          find ./bin -type f -name "devpod-windows-amd64.exe" -exec mv {} ./bin/devpod-cli-x86_64-pc-windows-msvc.exe \;
+          find ./bin -type f -name "devpod-windows-arm64.exe" -exec mv {} ./bin/devpod-cli-aarch64-pc-windows-msvc.exe \;
+
+          ls -R ./bin/
 
       - name: install linux dependencies
         if: runner.os == 'Linux'
@@ -474,8 +470,10 @@ jobs:
         uses: tauri-apps/tauri-action@v0.6
         with:
           projectPath: "./desktop"
-          args: "--target ${{ matrix.target }} ${{ matrix.tauri_config_args }}"
+          args: "--target ${{ matrix.target }}"
           includeUpdaterJson: ${{ matrix.tauri_include_updater_json }}
+          assetNamePattern: "[name]_[platform]_[arch][ext]"
+          retryAttempts: 1
         env:
           GITHUB_TOKEN: ${{ github.token }}
           TAURI_SIGNING_PRIVATE_KEY: "${{ github.workspace }}/desktop/app.key"
@@ -487,3 +485,49 @@ jobs:
         with:
           name: desktop-${{ matrix.runner }}-${{ matrix.arch }}
           path: desktop/src-tauri/target/${{ matrix.target }}/release/bundle/**/*
+
+  build-flatpak:
+    name: Build Flatpak
+    runs-on: ubuntu-latest
+    needs: [build-desktop]
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-48
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: clone shared-modules
+        run: git clone https://github.com/flathub/shared-modules.git desktop/flatpak/shared-modules
+
+      - name: download desktop linux artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: desktop-ubuntu-latest-amd64
+          path: /tmp/devpod/
+
+      # Use GITHUB_WORKSPACE in containers because the path differs from github.workspace
+      # for more details, see https://github.com/actions/checkout/issues/785
+      - name: prepare flatpak manifest for PR build
+        shell: bash
+        run: |
+          sed -i "s|url: https://github.com/skevetter/devpod/releases/download/\${VERSION}/DevPod_linux_amd64.deb|path: /tmp/devpod/deb/DevPod_0.0.0_amd64.deb|" "$GITHUB_WORKSPACE/desktop/flatpak/sh.loft.devpod.yml"
+          sed -i "s|url: https://github.com/skevetter/devpod/releases/download/\${VERSION}/DevPod.desktop|path: $GITHUB_WORKSPACE/desktop/flatpak/DevPod.desktop|" "$GITHUB_WORKSPACE/desktop/flatpak/sh.loft.devpod.yml"
+          sed -i "s|url: https://github.com/skevetter/devpod/releases/download/\${VERSION}/DevPod.metainfo.xml|path: $GITHUB_WORKSPACE/desktop/flatpak/DevPod.metainfo.xml|" "$GITHUB_WORKSPACE/desktop/flatpak/sh.loft.devpod.yml"
+          sed -i "/sha256: \${SHA256}/d" "$GITHUB_WORKSPACE/desktop/flatpak/sh.loft.devpod.yml"
+          sed -i "/sha256: \${DESKTOP_SHA256}/d" "$GITHUB_WORKSPACE/desktop/flatpak/sh.loft.devpod.yml"
+          sed -i "/sha256: \${META_SHA256}/d" "$GITHUB_WORKSPACE/desktop/flatpak/sh.loft.devpod.yml"
+
+      - name: update flatpak metadata version and date
+        run: |
+          DATE=$(date +%Y-%m-%d)
+          VERSION="v0.0.0"
+
+          sed -i "s/__VERSION__/${VERSION}/g" "$GITHUB_WORKSPACE/desktop/flatpak/DevPod.metainfo.xml"
+          sed -i "s/__DATE__/${DATE}/g" "$GITHUB_WORKSPACE/desktop/flatpak/DevPod.metainfo.xml"
+
+      - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          bundle: DevPod.flatpak
+          manifest-path: desktop/flatpak/sh.loft.devpod.yml
+          cache-key: flatpak-builder-${{ github.sha }}
+          upload-artifact: true

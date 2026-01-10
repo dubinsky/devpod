@@ -7,18 +7,11 @@
   },
   "bundle": {
     "active": true,
-    "windows": {
-      "certificateThumbprint": null,
-      "digestAlgorithm": "sha256",
-      "timestampUrl": "",
-      "nsis": {
-        "displayLanguageSelector": false,
-        "installMode": "currentUser"
-      }
-    },
     "category": "DeveloperTool",
     "copyright": "",
-    "externalBin": ["bin/devpod-cli"],
+    "externalBin": [
+      "bin/devpod-cli"
+    ],
     "resources": [],
     "icon": [
       "icons/32x32.png",
@@ -30,33 +23,6 @@
     "shortDescription": "Spin up dev environments in any infra",
     "longDescription": "Dev-environments-as-code like Terraform but for dev environments. Like Codespaces but open-source, client-only and unopinionated: Works with any IDE and lets you use any cloud, kubernetes or just on localhost docker.",
     "targets": "all",
-    "macOS": {
-      "entitlements": "./entitlements.plist",
-      "exceptionDomain": "",
-      "frameworks": [],
-      "providerShortName": null,
-      "signingIdentity": "-",
-      "dmg": {
-        "background": "dmg-background.png",
-        "windowSize": {
-          "width": 660,
-          "height": 400
-        },
-        "appPosition": {
-          "x": 180,
-          "y": 160
-        },
-        "applicationFolderPosition": {
-          "x": 480,
-          "y": 160
-        }
-      }
-    },
-    "linux": {
-      "deb": {
-        "depends": []
-      }
-    },
     "createUpdaterArtifacts": true
   },
   "productName": "DevPod",
@@ -65,11 +31,13 @@
   "identifier": "sh.loft.devpod",
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDMzMkVCREU0RTZCRjQ1NEQKUldSTlJiL201TDB1TTl2MkxzRDB4ZVhyVlByWnBiOEZyUEFLeDFONnFvNENtVm9uVEw1NjJTeHAK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDBGNjRFNEJERTMxODY1Q0QKUldUTlpSamp2ZVJrRDg3QWlWWkNPSm1GRDhZYm1yeTJ3SEZYR0s3OW8rZ1c1QWJCRDF2TjUzc2kK",
       "windows": {
         "installMode": "passive"
       },
-      "endpoints": ["https://github.com/skevetter/devpod/releases/latest/download/latest.json"]
+      "endpoints": [
+        "https://github.com/skevetter/devpod/releases/latest/download/latest.json"
+      ]
     }
   },
   "app": {
