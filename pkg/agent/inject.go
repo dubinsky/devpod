@@ -46,9 +46,9 @@ type InjectOptions struct {
 	RemoteAgentPath string
 	// DownloadURL is the base URL to download the agent binary from. Defaults to DefaultAgentDownloadURL().
 	DownloadURL string
-	// PreferDownload forces downloading the agent even if a local binary is available.
+	// PreferDownloadFromRemoteUrl forces downloading the agent even if a local binary is available.
 	// Defaults to true for release versions, false for dev versions.
-	PreferDownload *bool
+	PreferDownloadFromRemoteUrl *bool
 	// Timeout is the maximum duration to wait for the injection to complete. Defaults to 5 minutes.
 	Timeout time.Duration
 
@@ -95,11 +95,7 @@ func (o *InjectOptions) ApplyDefaults() {
 	isDefaultURL := o.DownloadURL == DefaultAgentDownloadURL()
 	hasCustomAgentURL := os.Getenv(EnvDevPodAgentURL) != "" || !isDefaultURL
 
-	if hasCustomAgentURL {
-		o.SkipVersionCheck = true
-	}
-
-	if o.PreferDownload != nil {
+	if o.PreferDownloadFromRemoteUrl != nil {
 		return
 	}
 
@@ -110,13 +106,16 @@ func (o *InjectOptions) ApplyDefaults() {
 			o.Log.Warnf("failed to parse %s, using default", EnvDevPodAgentPreferDownload)
 			pref = true
 		}
-		o.PreferDownload = Bool(pref)
+		o.PreferDownloadFromRemoteUrl = Bool(pref)
+		o.SkipVersionCheck = true
 	} else if hasCustomAgentURL {
-		o.PreferDownload = Bool(true)
+		o.PreferDownloadFromRemoteUrl = Bool(true)
+		o.SkipVersionCheck = true
 	} else if version.GetVersion() == version.DevVersion {
-		o.PreferDownload = Bool(false)
+		o.PreferDownloadFromRemoteUrl = Bool(false)
+		o.SkipVersionCheck = true
 	} else {
-		o.PreferDownload = Bool(true)
+		o.PreferDownloadFromRemoteUrl = Bool(true)
 	}
 }
 
@@ -157,21 +156,28 @@ func InjectAgent(opts *InjectOptions) error {
 	}
 
 	opts.Log.WithFields(logrus.Fields{
-		"localVersion":  opts.LocalVersion,
-		"remoteVersion": opts.RemoteVersion,
-		"skipCheck":     opts.SkipVersionCheck,
+		"localVersion":   opts.LocalVersion,
+		"remoteVersion":  opts.RemoteVersion,
+		"skipCheck":      opts.SkipVersionCheck,
+		"preferDownload": strconv.FormatBool(*opts.PreferDownloadFromRemoteUrl),
+		"timeout":        opts.Timeout,
 	}).Debug("starting agent injection")
 
 	vc := newVersionChecker(opts)
 	bm := NewBinaryManager(opts.Log, opts.DownloadURL)
-	retry := DefaultRetryStrategy()
-	if opts.Timeout > 0 {
-		retry.Timeout = opts.Timeout
-	}
-
-	return retry.WithRetry(opts.Ctx, opts.Log, func(attempt int) error {
-		return injectAgent(attempt, opts, bm, vc, metrics)
-	})
+	return RetryWithDeadline(
+		opts.Ctx,
+		opts.Log,
+		RetryConfig{
+			MaxAttempts:  30,
+			InitialDelay: 10 * time.Second,
+			MaxDelay:     60 * time.Second,
+			Deadline:     time.Now().Add(opts.Timeout),
+		},
+		func(attempt int) error {
+			return injectAgent(attempt, opts, bm, vc, metrics)
+		},
+	)
 }
 
 func injectLocally(opts *InjectOptions) error {
@@ -215,7 +221,7 @@ func injectAgent(
 		AgentRemotePath:     opts.RemoteAgentPath,
 		DownloadURLs:        inject.NewDownloadURLs(opts.DownloadURL),
 		ExistsCheck:         vc.buildExistsCheck(opts.RemoteAgentPath),
-		PreferAgentDownload: *opts.PreferDownload,
+		PreferAgentDownload: *opts.PreferDownloadFromRemoteUrl,
 		ShouldChmodPath:     true,
 	}
 
@@ -242,18 +248,17 @@ func injectAgent(
 		return &InjectError{Stage: "inject", Cause: err}
 	}
 
+	detectedVersion, err := vc.detectRemoteAgentVersion(opts.Ctx, opts.Exec, opts.RemoteAgentPath, opts.Log)
+	if detectedVersion != "" {
+		metrics.AgentVersion = detectedVersion
+	}
+
 	if !opts.SkipVersionCheck {
-		detectedVersion, err := vc.validateRemoteAgent(opts.Ctx, opts.Exec, opts.RemoteAgentPath, opts.Log)
-		if detectedVersion != "" {
-			metrics.AgentVersion = detectedVersion
-		}
 		if err != nil {
 			metrics.VersionCheck = false
 			return &InjectError{Stage: "version_check", Cause: err}
 		}
 		metrics.VersionCheck = true
-	} else {
-		metrics.AgentVersion = opts.RemoteVersion
 	}
 
 	metrics.Success = true
@@ -297,60 +302,117 @@ type LogMetricsCollector struct {
 
 func (c *LogMetricsCollector) RecordInjection(metrics *InjectionMetrics) {
 	c.Log.WithFields(logrus.Fields{
-		"duration":     metrics.EndTime.Sub(metrics.StartTime),
-		"attempts":     metrics.Attempts,
-		"binarySource": metrics.BinarySource,
-		"agentVersion": metrics.AgentVersion,
-		"versionCheck": metrics.VersionCheck,
-		"success":      metrics.Success,
+		"duration":           metrics.EndTime.Sub(metrics.StartTime),
+		"attempts":           metrics.Attempts,
+		"binarySource":       metrics.BinarySource,
+		"remoteAgentVersion": metrics.AgentVersion,
+		"versionCheck":       metrics.VersionCheck,
+		"success":            metrics.Success,
 	}).Debug("agent injection metrics")
 }
 
-type RetryStrategy struct {
+type RetryConfig struct {
 	MaxAttempts  int
 	InitialDelay time.Duration
 	MaxDelay     time.Duration
-	Timeout      time.Duration
+	Deadline     time.Time
 }
 
-func DefaultRetryStrategy() *RetryStrategy {
-	return &RetryStrategy{
-		MaxAttempts:  30,
-		InitialDelay: 3 * time.Second,
-		MaxDelay:     15 * time.Second,
-		Timeout:      5 * time.Minute,
-	}
-}
+type RetryFunc func(attempt int) error
 
-type RetryableFunc func(attempt int) error
+func RetryWithDeadline(
+	ctx context.Context,
+	log log.Logger,
+	cfg RetryConfig,
+	fn RetryFunc,
+) error {
+	cfg.applyDefaults()
+	delay := cfg.InitialDelay
+	for attempt := 1; attempt <= cfg.MaxAttempts; attempt++ {
+		if err := cfg.checkDeadline(attempt - 1); err != nil {
+			return err
+		}
+		if err := checkContextCancelled(ctx); err != nil {
+			return err
+		}
 
-func (s *RetryStrategy) WithRetry(ctx context.Context, log log.Logger, fn RetryableFunc) error {
-	ctx, cancel := context.WithTimeout(ctx, s.Timeout)
-	defer cancel()
-
-	delay := s.InitialDelay
-	attempt := 1
-
-	for {
 		err := fn(attempt)
 		if err == nil {
 			return nil
 		}
+		if attempt == cfg.MaxAttempts {
+			return fmt.Errorf("agent injection failed after %d attempts: %w", attempt, err)
+		}
 
-		if attempt >= s.MaxAttempts {
+		sleep := calculateSleep(delay, &cfg)
+
+		log.WithFields(logrus.Fields{
+			"attempt": attempt,
+			"delay":   sleep,
+			"error":   err,
+		}).Debug("retrying")
+
+		if err := sleepWithContext(ctx, sleep); err != nil {
 			return err
 		}
 
-		select {
-		case <-ctx.Done():
-			return ErrInjectTimeout
-		case <-time.After(delay):
-			delay *= 2
-			if delay > s.MaxDelay {
-				delay = s.MaxDelay
-			}
-			attempt++
+		delay *= 2
+		if delay > cfg.MaxDelay {
+			delay = cfg.MaxDelay
 		}
+	}
+
+	// This should not be reachable because a return should occur in the loop
+	return fmt.Errorf("retry loop exited unexpectedly")
+}
+
+// applyDefaults sets default values for retry configuration
+func (cfg *RetryConfig) applyDefaults() {
+	if cfg.MaxAttempts <= 0 {
+		cfg.MaxAttempts = 1
+	}
+	if cfg.InitialDelay <= 0 {
+		cfg.InitialDelay = time.Second
+	}
+}
+
+// checkDeadline returns an error if the deadline has been exceeded
+func (cfg *RetryConfig) checkDeadline(attemptsCompleted int) error {
+	if cfg.Deadline.IsZero() || !time.Now().After(cfg.Deadline) {
+		return nil
+	}
+	return fmt.Errorf("%w after %d attempts", ErrInjectTimeout, attemptsCompleted)
+}
+
+// checkContextCancelled returns an error if the context has been cancelled
+func checkContextCancelled(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+		return nil
+	}
+}
+
+// calculateSleep determines the sleep duration respecting deadline and max delay
+func calculateSleep(delay time.Duration, cfg *RetryConfig) time.Duration {
+	sleep := delay
+	if !cfg.Deadline.IsZero() {
+		remaining := time.Until(cfg.Deadline)
+		if remaining > 0 && sleep > remaining {
+			sleep = remaining
+		}
+	}
+	return sleep
+}
+
+// sleepWithContext sleeps for the specified duration with context cancellation support
+func sleepWithContext(ctx context.Context, duration time.Duration) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(duration):
+		return nil
 	}
 }
 
@@ -376,17 +438,12 @@ func (vc *versionChecker) buildExistsCheck(agentPath string) string {
 		agentPath, agentPath, vc.remoteVersion)
 }
 
-func (vc *versionChecker) validateRemoteAgent(
+func (vc *versionChecker) detectRemoteAgentVersion(
 	ctx context.Context,
 	exec inject.ExecFunc,
 	agentPath string,
 	log log.Logger,
 ) (string, error) {
-	if vc.skipCheck {
-		log.Debug("skipping version validation")
-		return "", nil
-	}
-
 	buf := &bytes.Buffer{}
 	versionCmd := fmt.Sprintf("%s version", agentPath)
 	err := exec(ctx, versionCmd, nil, buf, io.Discard)
@@ -395,6 +452,12 @@ func (vc *versionChecker) validateRemoteAgent(
 	}
 
 	actualVersion := strings.TrimSpace(buf.String())
+
+	if vc.skipCheck {
+		log.Debugf("skipping version validation, detected version: %s", actualVersion)
+		return actualVersion, nil
+	}
+
 	if actualVersion != vc.remoteVersion {
 		return actualVersion, fmt.Errorf("version mismatch: expected %s, got %s",
 			vc.remoteVersion, actualVersion)
