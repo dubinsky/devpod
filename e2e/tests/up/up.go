@@ -513,14 +513,31 @@ var _ = DevPodDescribe("devpod up test suite", func() {
 				workspaceName := filepath.Base(tempDir)
 				ginkgo.DeferCleanup(f.DevPodWorkspaceDelete, context.Background(), workspaceName)
 
-				// This should now succeed with dependsOn implementation
 				err = f.DevPodUp(ctx, tempDir)
 				framework.ExpectNoError(err)
 
-				// Test if the dependency (hello command) is available
 				out, err := f.DevPodSSH(ctx, workspaceName, "test-depends-on")
 				framework.ExpectNoError(err)
-				// The output contains ANSI color codes, so only check for the text
+				gomega.Expect(out).To(gomega.ContainSubstring("SUCCESS: hello command is available"))
+				gomega.Expect(out).To(gomega.ContainSubstring("hey, vscode"))
+			}, ginkgo.SpecTimeout(framework.GetTimeout()))
+
+			ginkgo.It("should not fail if same feature exists in dependsOn and installsAfter", ginkgo.Label("features", "depends-on"), func(ctx context.Context) {
+				f, err := setupDockerProvider(initialDir+"/bin", "docker")
+				framework.ExpectNoError(err)
+
+				tempDir, err := framework.CopyToTempDir("tests/up/testdata/docker-features-depends-on-duplicate-feature")
+				framework.ExpectNoError(err)
+				ginkgo.DeferCleanup(framework.CleanupTempDir, initialDir, tempDir)
+
+				workspaceName := filepath.Base(tempDir)
+				ginkgo.DeferCleanup(f.DevPodWorkspaceDelete, context.Background(), workspaceName)
+
+				err = f.DevPodUp(ctx, tempDir)
+				framework.ExpectNoError(err)
+
+				out, err := f.DevPodSSH(ctx, workspaceName, "test-depends-on")
+				framework.ExpectNoError(err)
 				gomega.Expect(out).To(gomega.ContainSubstring("SUCCESS: hello command is available"))
 				gomega.Expect(out).To(gomega.ContainSubstring("hey, vscode"))
 			}, ginkgo.SpecTimeout(framework.GetTimeout()))
@@ -676,5 +693,28 @@ var _ = DevPodDescribe("devpod up test suite", func() {
 			framework.ExpectNoError(err)
 			gomega.Expect(out).To(gomega.ContainSubstring("Python 3.11"))
 		}, ginkgo.SpecTimeout(framework.GetTimeout()*5)) // This test compiles Python
+
+		ginkgo.It("should handle same feature in dependsOn and installsAfter", ginkgo.Label("features", "depends-on"), func(ctx context.Context) {
+			f, err := setupDockerProvider(initialDir+"/bin", "docker")
+			framework.ExpectNoError(err)
+
+			tempDir, err := framework.CopyToTempDir("tests/up/testdata/docker-features-same-depends-on-and-installs-after")
+			framework.ExpectNoError(err)
+			ginkgo.DeferCleanup(framework.CleanupTempDir, initialDir, tempDir)
+
+			workspaceName := filepath.Base(tempDir)
+			ginkgo.DeferCleanup(f.DevPodWorkspaceDelete, context.Background(), workspaceName)
+
+			err = f.DevPodUp(ctx, tempDir)
+			framework.ExpectNoError(err)
+
+			out, err := f.DevPodSSH(ctx, workspaceName, "cat /tmp/test-result")
+			framework.ExpectNoError(err)
+			gomega.Expect(out).To(gomega.ContainSubstring("test-passed"))
+
+			out, err = f.DevPodSSH(ctx, workspaceName, "node --version")
+			framework.ExpectNoError(err)
+			gomega.Expect(out).To(gomega.MatchRegexp(`v\d+\.\d+\.\d+`))
+		}, ginkgo.SpecTimeout(framework.GetTimeout()))
 	})
 })
