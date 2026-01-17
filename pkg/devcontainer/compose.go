@@ -777,19 +777,7 @@ exec "$$@"
 	}
 
 	gpuSupportEnabled, _ := composeHelper.Docker.GPUSupportEnabled()
-	if parsedConfig.Config.HostRequirements != nil && parsedConfig.Config.HostRequirements.GPU == "true" && gpuSupportEnabled {
-		overrideService.Deploy = &composetypes.DeployConfig{
-			Resources: composetypes.Resources{
-				Reservations: &composetypes.Resource{
-					Devices: []composetypes.DeviceRequest{
-						{
-							Capabilities: []string{"gpu"},
-						},
-					},
-				},
-			},
-		}
-	}
+	r.configureGPUResources(parsedConfig, gpuSupportEnabled, overrideService)
 
 	for _, mount := range mergedConfig.Mounts {
 		overrideService.Volumes = append(overrideService.Volumes, composetypes.ServiceVolumeConfig{
@@ -823,6 +811,28 @@ exec "$$@"
 	}
 
 	return project
+}
+
+func (r *runner) configureGPUResources(parsedConfig *config.SubstitutedConfig, gpuSupportEnabled bool, overrideService *composetypes.ServiceConfig) {
+	if parsedConfig.Config.HostRequirements != nil {
+		enableGPU, warnIfMissing := parsedConfig.Config.HostRequirements.ShouldEnableGPU(gpuSupportEnabled)
+		if enableGPU {
+			overrideService.Deploy = &composetypes.DeployConfig{
+				Resources: composetypes.Resources{
+					Reservations: &composetypes.Resource{
+						Devices: []composetypes.DeviceRequest{
+							{
+								Capabilities: []string{"gpu"},
+							},
+						},
+					},
+				},
+			}
+		}
+		if warnIfMissing {
+			r.Log.Warn("GPU required but not available on host")
+		}
+	}
 }
 
 func checkForPersistedFile(files []string, prefix string) (foundLabel bool, fileExists bool, filePath string, err error) {
