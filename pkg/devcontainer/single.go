@@ -218,15 +218,13 @@ func (r *runner) runContainer(
 	// check if docker
 	dockerDriver, ok := r.Driver.(driver.DockerDriver)
 	if ok {
-		return dockerDriver.RunDockerDevContainer(
-			ctx,
-			r.ID,
-			runOptions,
-			parsedConfig.Config,
-			mergedConfig.Init,
-			r.WorkspaceConfig.Workspace.IDE.Name,
-			r.WorkspaceConfig.Workspace.IDE.Options,
-		)
+		return dockerDriver.RunDockerDevContainer(ctx, &driver.RunDockerDevContainerParams{
+			WorkspaceID:  r.ID,
+			Options:      runOptions,
+			ParsedConfig: parsedConfig.Config,
+			IDE:          r.WorkspaceConfig.Workspace.IDE.Name,
+			IDEOptions:   r.WorkspaceConfig.Workspace.IDE.Options,
+		})
 	}
 
 	// build run options for regular driver
@@ -304,6 +302,7 @@ func (r *runner) getDockerlessRunOptions(
 			config.UserLabel + "=" + buildInfo.Dockerless.User,
 		},
 		Privileged:     mergedConfig.Privileged,
+		Init:           mergedConfig.Init,
 		WorkspaceMount: &workspaceMountParsed,
 		Mounts:         mounts,
 		Userns:         substitutionContext.Userns,
@@ -353,6 +352,7 @@ func (r *runner) getRunOptions(
 		CapAdd:         mergedConfig.CapAdd,
 		Labels:         labels,
 		Privileged:     mergedConfig.Privileged,
+		Init:           mergedConfig.Init,
 		WorkspaceMount: &workspaceMountParsed,
 		SecurityOpt:    mergedConfig.SecurityOpt,
 		Mounts:         mergedConfig.Mounts,
