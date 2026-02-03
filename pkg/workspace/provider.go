@@ -3,6 +3,7 @@ package workspace
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -14,7 +15,6 @@ import (
 	"github.com/skevetter/devpod/pkg/types"
 	"github.com/skevetter/devpod/providers"
 
-	"github.com/pkg/errors"
 	"github.com/skevetter/devpod/pkg/binaries"
 	"github.com/skevetter/devpod/pkg/config"
 	"github.com/skevetter/devpod/pkg/download"
