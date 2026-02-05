@@ -11,11 +11,10 @@ import (
 	"strings"
 
 	devpodhttp "github.com/skevetter/devpod/pkg/http"
-	providerpkg "github.com/skevetter/devpod/pkg/provider"
+	"github.com/skevetter/devpod/pkg/provider"
 	"github.com/skevetter/devpod/pkg/types"
 	"github.com/skevetter/devpod/providers"
 
-	"github.com/skevetter/devpod/pkg/binaries"
 	"github.com/skevetter/devpod/pkg/config"
 	"github.com/skevetter/devpod/pkg/download"
 	"github.com/skevetter/log"
@@ -36,15 +35,15 @@ var (
 )
 
 type ProviderWithOptions struct {
-	Config *providerpkg.ProviderConfig `json:"config,omitempty"`
-	State  *config.ProviderConfig      `json:"state,omitempty"`
+	Config *provider.ProviderConfig `json:"config,omitempty"`
+	State  *config.ProviderConfig   `json:"state,omitempty"`
 }
 
 type ProviderParams struct {
 	DevPodConfig *config.Config
 	ProviderName string
 	Raw          []byte
-	Source       *providerpkg.ProviderSource
+	Source       *provider.ProviderSource
 	Log          log.Logger
 }
 
@@ -98,28 +97,28 @@ func ProviderFromHost(
 	devPodConfig *config.Config,
 	proHost string,
 	log log.Logger,
-) (*providerpkg.ProviderConfig, error) {
-	proInstanceConfig, err := providerpkg.LoadProInstanceConfig(devPodConfig.DefaultContext, proHost)
+) (*provider.ProviderConfig, error) {
+	proInstanceConfig, err := provider.LoadProInstanceConfig(devPodConfig.DefaultContext, proHost)
 	if err != nil {
 		return nil, fmt.Errorf("load pro instance %s: %w", proHost, err)
 	}
 
-	provider, err := FindProvider(devPodConfig, proInstanceConfig.Provider, log)
+	foundProvider, err := FindProvider(devPodConfig, proInstanceConfig.Provider, log)
 	if err != nil {
 		return nil, fmt.Errorf("find provider: %w", err)
 	}
-	if !provider.Config.IsProxyProvider() && !provider.Config.IsDaemonProvider() {
+	if !foundProvider.Config.IsProxyProvider() && !foundProvider.Config.IsDaemonProvider() {
 		return nil, fmt.Errorf("provider is not a pro provider")
 	}
 
-	return provider.Config, nil
+	return foundProvider.Config, nil
 }
 
 func AddProvider(
 	devPodConfig *config.Config,
 	providerName, providerSourceRaw string,
 	log log.Logger,
-) (*providerpkg.ProviderConfig, error) {
+) (*provider.ProviderConfig, error) {
 	providerRaw, providerSource, err := ResolveProvider(providerSourceRaw, log)
 	if err != nil {
 		return nil, err
@@ -134,7 +133,7 @@ func AddProvider(
 	})
 }
 
-func AddProviderRaw(p ProviderParams) (*providerpkg.ProviderConfig, error) {
+func AddProviderRaw(p ProviderParams) (*provider.ProviderConfig, error) {
 	providerConfig, err := installRawProvider(p)
 	if err != nil {
 		return nil, err
@@ -160,7 +159,7 @@ func UpdateProvider(
 	devPodConfig *config.Config,
 	providerName, providerSourceRaw string,
 	log log.Logger,
-) (*providerpkg.ProviderConfig, error) {
+) (*provider.ProviderConfig, error) {
 	if devPodConfig.Current().Providers[providerName] == nil {
 		return nil, fmt.Errorf("provider %s not found", providerName)
 	}
@@ -227,36 +226,50 @@ func ResolveProviderSource(devPodConfig *config.Config, providerName string, log
 	return source, nil
 }
 
-func ResolveProvider(providerSource string, log log.Logger) ([]byte, *providerpkg.ProviderSource, error) {
-	retSource := &providerpkg.ProviderSource{Raw: strings.TrimSpace(providerSource)}
+func ResolveProvider(providerSource string, log log.Logger) ([]byte, *provider.ProviderSource, error) {
+	retSource := &provider.ProviderSource{Raw: strings.TrimSpace(providerSource)}
 
 	if out, ok := resolveInternalProvider(providerSource, retSource); ok {
 		return out, retSource, nil
 	}
 
-	if out, ok, err := resolveURLProvider(providerSource, retSource, log); ok {
-		if err != nil {
-			return nil, nil, err
-		}
-		return out, retSource, nil
+	if out, err := tryResolveURLProvider(providerSource, retSource, log); hasOutputOrError(out, err) {
+		return out, retSource, err
 	}
 
-	if out, ok := resolveFileProvider(providerSource, retSource); ok {
-		return out, retSource, nil
+	if out, err := tryResolveFileProvider(providerSource, retSource); hasOutputOrError(out, err) {
+		return out, retSource, err
 	}
 
 	out, source, err := downloadProviderGithub(providerSource, log)
-	if err != nil {
-		return nil, nil, fmt.Errorf("download github: %w", err)
-	}
-	if len(out) > 0 {
-		return out, source, nil
+	if len(out) > 0 || err != nil {
+		return out, source, err
 	}
 
 	return nil, nil, fmt.Errorf("provider type not recognized: specify a local file, url, or github repository")
 }
 
-func downloadProviderGithub(originalPath string, log log.Logger) ([]byte, *providerpkg.ProviderSource, error) {
+func hasOutputOrError(out []byte, err error) bool {
+	return out != nil || err != nil
+}
+
+func tryResolveURLProvider(providerSource string, retSource *provider.ProviderSource, log log.Logger) ([]byte, error) {
+	out, ok, err := resolveURLProvider(providerSource, retSource, log)
+	if !ok {
+		return nil, nil
+	}
+	return out, err
+}
+
+func tryResolveFileProvider(providerSource string, retSource *provider.ProviderSource) ([]byte, error) {
+	out, ok, err := resolveFileProvider(providerSource, retSource)
+	if !ok {
+		return nil, nil
+	}
+	return out, err
+}
+
+func downloadProviderGithub(originalPath string, log log.Logger) ([]byte, *provider.ProviderSource, error) {
 	path := strings.TrimPrefix(originalPath, githubPrefix)
 
 	release := ""
@@ -270,7 +283,10 @@ func downloadProviderGithub(originalPath string, log log.Logger) ([]byte, *provi
 	if len(splitted) == 1 {
 		path = providerPrefix + path
 	} else if len(splitted) != 2 {
-		return nil, nil, nil
+		return nil, nil, fmt.Errorf(
+			"invalid github path format: expected 'owner/repo' or 'provider-name', got %q",
+			originalPath,
+		)
 	}
 
 	requestURL := buildGithubURL(path, release)
@@ -286,7 +302,7 @@ func downloadProviderGithub(originalPath string, log log.Logger) ([]byte, *provi
 		return nil, nil, err
 	}
 
-	return out, &providerpkg.ProviderSource{
+	return out, &provider.ProviderSource{
 		Raw:    originalPath,
 		Github: path,
 	}, nil
@@ -304,7 +320,7 @@ func loadConfiguredProviders(
 			continue
 		}
 
-		providerConfig, err := providerpkg.LoadProviderConfig(devPodConfig.DefaultContext, providerName)
+		providerConfig, err := provider.LoadProviderConfig(devPodConfig.DefaultContext, providerName)
 		if err != nil {
 			log.Warnf("error loading provider %s: %v", providerName, err)
 			continue
@@ -318,7 +334,7 @@ func loadConfiguredProviders(
 }
 
 func loadUnconfiguredProviders(devPodConfig *config.Config, retProviders map[string]*ProviderWithOptions) error {
-	providerDir, err := providerpkg.GetProvidersDir(devPodConfig.DefaultContext)
+	providerDir, err := provider.GetProvidersDir(devPodConfig.DefaultContext)
 	if err != nil {
 		return err
 	}
@@ -350,7 +366,7 @@ func loadProviderEntry(
 	entry os.DirEntry,
 	retProviders map[string]*ProviderWithOptions,
 ) error {
-	providerConfig, err := providerpkg.LoadProviderConfig(devPodConfig.DefaultContext, entry.Name())
+	providerConfig, err := provider.LoadProviderConfig(devPodConfig.DefaultContext, entry.Name())
 	if err != nil {
 		return err
 	}
@@ -362,8 +378,8 @@ func loadProviderEntry(
 	return nil
 }
 
-func installRawProvider(p ProviderParams) (*providerpkg.ProviderConfig, error) {
-	providerConfig, err := providerpkg.ParseProvider(bytes.NewReader(p.Raw))
+func installRawProvider(p ProviderParams) (*provider.ProviderConfig, error) {
+	providerConfig, err := provider.ParseProvider(bytes.NewReader(p.Raw))
 	if err != nil {
 		return nil, err
 	}
@@ -377,8 +393,12 @@ func installRawProvider(p ProviderParams) (*providerpkg.ProviderConfig, error) {
 
 func installProvider(
 	p ProviderParams,
-	providerConfig *providerpkg.ProviderConfig,
-) (*providerpkg.ProviderConfig, error) {
+	providerConfig *provider.ProviderConfig,
+) (*provider.ProviderConfig, error) {
+	if p.Source == nil {
+		return nil, fmt.Errorf("provider source is required")
+	}
+
 	providerConfig.Source = *p.Source
 	if p.ProviderName != "" {
 		providerConfig.Name = p.ProviderName
@@ -395,10 +415,32 @@ func installProvider(
 	return providerConfig, nil
 }
 
-func updateProvider(p ProviderParams) (*providerpkg.ProviderConfig, error) {
-	providerConfig, err := providerpkg.ParseProvider(bytes.NewReader(p.Raw))
+func updateProvider(p ProviderParams) (*provider.ProviderConfig, error) {
+	providerConfig, err := parseAndValidateProvider(p)
 	if err != nil {
 		return nil, err
+	}
+
+	cleanupOldOptions(p.DevPodConfig, providerConfig)
+
+	if err := config.SaveConfig(p.DevPodConfig); err != nil {
+		return nil, err
+	}
+
+	if err := downloadAndSaveProvider(p, providerConfig); err != nil {
+		return nil, err
+	}
+
+	return providerConfig, nil
+}
+
+func parseAndValidateProvider(p ProviderParams) (*provider.ProviderConfig, error) {
+	providerConfig, err := provider.ParseProvider(bytes.NewReader(p.Raw))
+	if err != nil {
+		return nil, err
+	}
+	if p.Source == nil {
+		return nil, fmt.Errorf("provider source is required")
 	}
 
 	providerConfig.Source = *p.Source
@@ -409,20 +451,6 @@ func updateProvider(p ProviderParams) (*providerpkg.ProviderConfig, error) {
 		providerConfig.Options = map[string]*types.Option{}
 	}
 
-	cleanupOldOptions(p.DevPodConfig, providerConfig)
-
-	if err := config.SaveConfig(p.DevPodConfig); err != nil {
-		return nil, err
-	}
-
-	if err := downloadProviderBinaries(p, providerConfig); err != nil {
-		return nil, err
-	}
-
-	if err := providerpkg.SaveProviderConfig(p.DevPodConfig.DefaultContext, providerConfig); err != nil {
-		return nil, err
-	}
-
 	return providerConfig, nil
 }
 
@@ -431,7 +459,7 @@ func checkProviderNotExists(devPodConfig *config.Config, providerName string) er
 		return fmt.Errorf("provider %s already exists", providerName)
 	}
 
-	providerDir, err := providerpkg.GetProviderDir(devPodConfig.DefaultContext, providerName)
+	providerDir, err := provider.GetProviderDir(devPodConfig.DefaultContext, providerName)
 	if err != nil {
 		return err
 	}
@@ -443,48 +471,39 @@ func checkProviderNotExists(devPodConfig *config.Config, providerName string) er
 	return nil
 }
 
-func downloadAndSaveProvider(p ProviderParams, providerConfig *providerpkg.ProviderConfig) error {
-	binariesDir, err := providerpkg.GetProviderBinariesDir(p.DevPodConfig.DefaultContext, providerConfig.Name)
+func downloadAndSaveProvider(p ProviderParams, providerConfig *provider.ProviderConfig) error {
+	binariesDir, err := provider.GetProviderBinariesDir(p.DevPodConfig.DefaultContext, providerConfig.Name)
 	if err != nil {
 		return fmt.Errorf("get binaries dir: %w", err)
 	}
 
-	providerDir, err := providerpkg.GetProviderDir(p.DevPodConfig.DefaultContext, providerConfig.Name)
+	providerDir, err := provider.GetProviderDir(p.DevPodConfig.DefaultContext, providerConfig.Name)
 	if err != nil {
 		return fmt.Errorf("get provider dir: %w", err)
 	}
 
-	if _, err := binaries.DownloadBinaries(providerConfig.Binaries, binariesDir, p.Log); err != nil {
+	if _, err := provider.DownloadBinaries(providerConfig.Binaries, binariesDir, p.Log); err != nil {
 		_ = os.RemoveAll(providerDir)
 		return fmt.Errorf("download binaries: %w", err)
 	}
 
-	return providerpkg.SaveProviderConfig(p.DevPodConfig.DefaultContext, providerConfig)
+	return provider.SaveProviderConfig(p.DevPodConfig.DefaultContext, providerConfig)
 }
 
-func cleanupOldOptions(devPodConfig *config.Config, providerConfig *providerpkg.ProviderConfig) {
-	for optionName := range devPodConfig.Current().Providers[providerConfig.Name].Options {
+func cleanupOldOptions(devPodConfig *config.Config, providerConfig *provider.ProviderConfig) {
+	providerState := devPodConfig.Current().Providers[providerConfig.Name]
+	if providerState == nil || providerState.Options == nil {
+		return
+	}
+
+	for optionName := range providerState.Options {
 		if _, ok := providerConfig.Options[optionName]; !ok {
-			delete(devPodConfig.Current().Providers[providerConfig.Name].Options, optionName)
+			delete(providerState.Options, optionName)
 		}
 	}
 }
 
-func downloadProviderBinaries(p ProviderParams, providerConfig *providerpkg.ProviderConfig) error {
-	binariesDir, err := providerpkg.GetProviderBinariesDir(p.DevPodConfig.DefaultContext, providerConfig.Name)
-	if err != nil {
-		return fmt.Errorf("get binaries dir: %w", err)
-	}
-
-	if _, err := binaries.DownloadBinaries(providerConfig.Binaries, binariesDir, p.Log); err != nil {
-		_ = os.RemoveAll(binariesDir)
-		return fmt.Errorf("download binaries: %w", err)
-	}
-
-	return nil
-}
-
-func getProviderSource(src providerpkg.ProviderSource, configName string) string {
+func getProviderSource(src provider.ProviderSource, configName string) string {
 	switch {
 	case src.Internal:
 		if src.Raw == "" {
@@ -502,7 +521,7 @@ func getProviderSource(src providerpkg.ProviderSource, configName string) string
 	}
 }
 
-func resolveInternalProvider(providerSource string, retSource *providerpkg.ProviderSource) ([]byte, bool) {
+func resolveInternalProvider(providerSource string, retSource *provider.ProviderSource) ([]byte, bool) {
 	internalProviders := providers.GetBuiltInProviders()
 	if internalProviders[providerSource] != "" {
 		retSource.Internal = true
@@ -513,7 +532,7 @@ func resolveInternalProvider(providerSource string, retSource *providerpkg.Provi
 
 func resolveURLProvider(
 	providerSource string,
-	retSource *providerpkg.ProviderSource,
+	retSource *provider.ProviderSource,
 	log log.Logger,
 ) ([]byte, bool, error) {
 	if !strings.HasPrefix(providerSource, httpPrefix) && !strings.HasPrefix(providerSource, httpsPrefix) {
@@ -529,27 +548,30 @@ func resolveURLProvider(
 	return out, true, nil
 }
 
-func resolveFileProvider(providerSource string, retSource *providerpkg.ProviderSource) ([]byte, bool) {
+func resolveFileProvider(providerSource string, retSource *provider.ProviderSource) ([]byte, bool, error) {
 	if !strings.HasSuffix(providerSource, yamlExt) && !strings.HasSuffix(providerSource, ymlExt) {
-		return nil, false
+		return nil, false, nil
 	}
 
 	if _, err := os.Stat(providerSource); err != nil {
-		return nil, false
+		if os.IsNotExist(err) {
+			return nil, false, nil
+		}
+		return nil, true, fmt.Errorf("stat provider file %q: %w", providerSource, err)
 	}
 
 	// #nosec G304 - providerSource is user-provided path for loading provider config
 	out, err := os.ReadFile(providerSource)
 	if err != nil {
-		return nil, false
+		return nil, true, fmt.Errorf("read provider file %q: %w", providerSource, err)
 	}
 
 	absPath, err := filepath.Abs(providerSource)
 	if err != nil {
-		return nil, false
+		return nil, true, fmt.Errorf("resolve absolute path for %q: %w", providerSource, err)
 	}
 	retSource.File = absPath
-	return out, true
+	return out, true, nil
 }
 
 func downloadProvider(url string) ([]byte, error) {
