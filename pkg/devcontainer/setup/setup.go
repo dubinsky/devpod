@@ -31,72 +31,62 @@ const (
 	ResultLocation = "/var/run/devpod/result.json"
 )
 
-func SetupContainer(ctx context.Context, setupInfo *config.Result, extraWorkspaceEnv []string, chownProjects bool, platformOptions *devpod.PlatformOptions, tunnelClient tunnel.TunnelClient, log log.Logger) error {
-	// write result to ResultLocation
-	WriteResult(setupInfo, log)
+type ContainerSetupConfig struct {
+	SetupInfo         *config.Result
+	ExtraWorkspaceEnv []string
+	ChownProjects     bool
+	PlatformOptions   *devpod.PlatformOptions
+	TunnelClient      tunnel.TunnelClient
+	Log               log.Logger
+}
 
-	// chown user dir
-	err := ChownWorkspace(setupInfo, chownProjects, log)
-	if err != nil {
-		return fmt.Errorf("failed to chown workspace: %w", err)
+func SetupContainer(ctx context.Context, cfg *ContainerSetupConfig) error {
+	if err := validateContainerSetupConfig(cfg); err != nil {
+		return err
 	}
 
-	// patch remote env
-	log.Debugf("Patch etc environment & profile...")
-	err = PatchEtcEnvironment(setupInfo.MergedConfig, log)
-	if err != nil {
-		return fmt.Errorf("patch etc environment: %w", err)
-	}
-	err = PatchEtcEnvironmentFlags(extraWorkspaceEnv, log)
-	if err != nil {
-		return fmt.Errorf("patch etc environment from flags: %w", err)
+	writeResultFile(cfg)
+
+	if err := setupWorkspaceOwnership(cfg); err != nil {
+		return err
 	}
 
-	// patch etc profile
-	err = PatchEtcProfile()
-	if err != nil {
-		return fmt.Errorf("patch etc profile: %w", err)
+	if err := setupEnvironment(cfg); err != nil {
+		return err
 	}
 
-	// link /home/root to root if necessary
-	err = LinkRootHome(setupInfo)
-	if err != nil {
-		log.Errorf("Error linking /home/root: %v", err)
-	}
+	setupOptionalFeatures(ctx, cfg)
 
-	// chown agent sock file
-	err = ChownAgentSock(setupInfo)
-	if err != nil {
-		return fmt.Errorf("chown ssh agent sock file: %w", err)
-	}
-
-	// setup kube config
-	err = SetupKubeConfig(ctx, setupInfo, tunnelClient, log)
-	if err != nil {
-		log.Errorf("Error setting up KubeConfig: %v", err)
-	}
-
-	// setup platform git credentials
-	err = setupPlatformGitCredentials(config.GetRemoteUser(setupInfo), platformOptions, log)
-	if err != nil {
-		log.Errorf("Error setting up platform git credentials: %v", err)
-	}
-
-	// run commands
-	log.Debugf("Run lifecycle hooks commands...")
-	err = RunLifecycleHooks(ctx, setupInfo, log)
-	if err != nil {
+	cfg.Log.Debugf("running lifecycle hooks")
+	if err := RunLifecycleHooks(ctx, cfg.SetupInfo, cfg.Log); err != nil {
 		return fmt.Errorf("lifecycle hooks: %w", err)
 	}
 
-	log.Debugf("Done setting up environment")
+	cfg.Log.Debugf("devcontainer setup completed")
 	return nil
 }
 
-func WriteResult(setupInfo *config.Result, log log.Logger) {
-	rawBytes, err := json.Marshal(setupInfo)
+func validateContainerSetupConfig(cfg *ContainerSetupConfig) error {
+	if cfg == nil {
+		return fmt.Errorf("container setup config is nil")
+	}
+	if cfg.Log == nil {
+		return fmt.Errorf("logger not found in container setup config")
+	}
+	if cfg.SetupInfo == nil {
+		return fmt.Errorf("setup info not found in container setup config")
+	}
+	if cfg.SetupInfo.MergedConfig == nil {
+		return fmt.Errorf("merged devcontainer config not found in container setup config")
+	}
+
+	return nil
+}
+
+func writeResultFile(cfg *ContainerSetupConfig) {
+	rawBytes, err := json.Marshal(cfg.SetupInfo)
 	if err != nil {
-		log.Warnf("Error marshal result: %v", err)
+		cfg.Log.Warnf("error marshal result: %v", err)
 		return
 	}
 
@@ -105,20 +95,63 @@ func WriteResult(setupInfo *config.Result, log log.Logger) {
 		return
 	}
 
-	err = os.MkdirAll(filepath.Dir(ResultLocation), 0777)
-	if err != nil {
-		log.Warnf("Error create %s: %v", filepath.Dir(ResultLocation), err)
-		return
+	// #nosec G301 -- Standard directory permissions
+	if err := os.MkdirAll(filepath.Dir(ResultLocation), 0755); err != nil {
+		cfg.Log.Warnf("error create %s: %v", filepath.Dir(ResultLocation), err)
 	}
 
-	err = os.WriteFile(ResultLocation, rawBytes, 0600)
-	if err != nil {
-		log.Warnf("Error write result to %s: %v", ResultLocation, err)
-		return
+	if err := os.WriteFile(ResultLocation, rawBytes, 0600); err != nil {
+		cfg.Log.Warnf("error write result to %s: %v", ResultLocation, err)
 	}
 }
 
-func LinkRootHome(setupInfo *config.Result) error {
+func setupWorkspaceOwnership(cfg *ContainerSetupConfig) error {
+	if err := chownWorkspace(cfg.SetupInfo, cfg.ChownProjects, cfg.Log); err != nil {
+		return fmt.Errorf("failed to chown workspace: %w", err)
+	}
+
+	if err := linkRootHome(cfg.SetupInfo); err != nil {
+		cfg.Log.Errorf("Error linking /home/root: %v", err)
+	}
+
+	if err := chownAgentSock(cfg.SetupInfo); err != nil {
+		return fmt.Errorf("chown ssh agent sock file: %w", err)
+	}
+
+	return nil
+}
+
+func setupEnvironment(cfg *ContainerSetupConfig) error {
+	cfg.Log.Debugf("patching etc environment")
+
+	if err := patchEtcEnvironment(cfg.SetupInfo.MergedConfig, cfg.Log); err != nil {
+		return fmt.Errorf("patch etc environment: %w", err)
+	}
+
+	if err := patchEtcEnvironmentFlags(cfg.ExtraWorkspaceEnv, cfg.Log); err != nil {
+		return fmt.Errorf("patch etc environment from flags: %w", err)
+	}
+
+	if err := patchEtcProfile(); err != nil {
+		return fmt.Errorf("patch etc profile: %w", err)
+	}
+
+	return nil
+}
+
+func setupOptionalFeatures(ctx context.Context, cfg *ContainerSetupConfig) {
+	if err := setupKubeConfig(ctx, cfg.SetupInfo, cfg.TunnelClient, cfg.Log); err != nil {
+		cfg.Log.Errorf("setup KubeConfig: %v", err)
+	}
+
+	if cfg.PlatformOptions != nil {
+		if err := setupPlatformGitCredentials(config.GetRemoteUser(cfg.SetupInfo), cfg.PlatformOptions, cfg.Log); err != nil {
+			cfg.Log.Errorf("setup platform git credentials: %v", err)
+		}
+	}
+}
+
+func linkRootHome(setupInfo *config.Result) error {
 	user := config.GetRemoteUser(setupInfo)
 	if user != "root" {
 		return nil
@@ -150,7 +183,7 @@ func LinkRootHome(setupInfo *config.Result) error {
 	return nil
 }
 
-func ChownWorkspace(setupInfo *config.Result, recursive bool, log log.Logger) error {
+func chownWorkspace(setupInfo *config.Result, recursive bool, log log.Logger) error {
 	user := config.GetRemoteUser(setupInfo)
 	exists, err := markerFileExists("chownWorkspace", "")
 	if err != nil {
@@ -187,7 +220,7 @@ func ChownWorkspace(setupInfo *config.Result, recursive bool, log log.Logger) er
 	return nil
 }
 
-func PatchEtcProfile() error {
+func patchEtcProfile() error {
 	exists, err := markerFileExists("patchEtcProfile", "")
 	if err != nil {
 		return err
@@ -203,7 +236,7 @@ func PatchEtcProfile() error {
 	return nil
 }
 
-func PatchEtcEnvironmentFlags(workspaceEnv []string, log log.Logger) error {
+func patchEtcEnvironmentFlags(workspaceEnv []string, log log.Logger) error {
 	if len(workspaceEnv) == 0 {
 		return nil
 	}
@@ -224,7 +257,7 @@ func PatchEtcEnvironmentFlags(workspaceEnv []string, log log.Logger) error {
 	return nil
 }
 
-func PatchEtcEnvironment(mergedConfig *config.MergedDevContainerConfig, log log.Logger) error {
+func patchEtcEnvironment(mergedConfig *config.MergedDevContainerConfig, log log.Logger) error {
 	if len(mergedConfig.RemoteEnv) == 0 {
 		return nil
 	}
@@ -249,7 +282,7 @@ func PatchEtcEnvironment(mergedConfig *config.MergedDevContainerConfig, log log.
 	return nil
 }
 
-func ChownAgentSock(setupInfo *config.Result) error {
+func chownAgentSock(setupInfo *config.Result) error {
 	user := config.GetRemoteUser(setupInfo)
 	agentSockFile := os.Getenv("SSH_AUTH_SOCK")
 	if agentSockFile != "" {
@@ -262,25 +295,57 @@ func ChownAgentSock(setupInfo *config.Result) error {
 	return nil
 }
 
-// SetupKubeConfig retrieves and stores a KubeConfig file in the default location `$HOME/.kube/config`.
+// setupKubeConfig retrieves and stores a KubeConfig file in the default location `$HOME/.kube/config`.
 // It merges our KubeConfig with existing ones.
-func SetupKubeConfig(ctx context.Context, setupInfo *config.Result, tunnelClient tunnel.TunnelClient, log log.Logger) error {
-	exists, err := markerFileExists("setupKubeConfig", "")
-	if err != nil {
-		return err
-	} else if exists || tunnelClient == nil {
+func setupKubeConfig(
+	ctx context.Context,
+	setupInfo *config.Result,
+	tunnelClient tunnel.TunnelClient,
+	log log.Logger) error {
+	if shouldSkipKubeConfig(tunnelClient, log) {
 		return nil
 	}
-	log.Info("Setup KubeConfig")
+	log.Info("setup KubeConfig")
 
-	// get kubernetes config from setup server
 	kubeConfigRes, err := tunnelClient.KubeConfig(ctx, &tunnel.Message{})
 	if err != nil {
 		return err
-	} else if kubeConfigRes.Message == "" {
+	}
+	if kubeConfigRes.Message == "" { // no kubeconfig returned, skip
 		return nil
 	}
 
+	if err := writeKubeConfig(setupInfo, kubeConfigRes.Message); err != nil {
+		return err
+	}
+
+	if _, err := markerFileExists("setupKubeConfig", ""); err != nil {
+		log.Warnf("write kubeconfig marker: %v", err)
+	}
+	return nil
+}
+
+func shouldSkipKubeConfig(tunnelClient tunnel.TunnelClient, log log.Logger) bool {
+	if tunnelClient == nil {
+		return true
+	}
+
+	markerPath := filepath.Join("/var/devpod", "setupKubeConfig.marker")
+	info, err := os.Stat(markerPath)
+	if err == nil {
+		if info.Mode().Perm()&0o022 != 0 {
+			log.Warnf("ignoring insecure marker permissions: %s (%#o)", markerPath, info.Mode().Perm())
+			return false
+		}
+		return true
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		log.Warnf("error checking marker file in shouldSkipKubeConfig: %v", err)
+	}
+	return false
+}
+
+func writeKubeConfig(setupInfo *config.Result, configData string) error {
 	user := config.GetRemoteUser(setupInfo)
 	homeDir, err := command.GetHome(user)
 	if err != nil {
@@ -288,47 +353,55 @@ func SetupKubeConfig(ctx context.Context, setupInfo *config.Result, tunnelClient
 	}
 
 	kubeDir := filepath.Join(homeDir, ".kube")
-	err = os.Mkdir(kubeDir, 0755)
-	if err != nil && !errors.Is(err, os.ErrExist) {
+	if err := os.MkdirAll(kubeDir, 0755); err != nil { // #nosec G301 -- Standard directory permissions
 		return err
 	}
 
 	configPath := filepath.Join(kubeDir, "config")
+	if err := mergeKubeConfig(configPath, configData); err != nil {
+		return err
+	}
+
+	return copy2.ChownR(kubeDir, user)
+}
+
+func mergeKubeConfig(configPath, newConfigData string) error {
 	existingConfig, err := clientcmd.LoadFromFile(configPath)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	if existingConfig == nil {
-		existingConfig = clientcmdapi.NewConfig()
-	}
 
-	kubeConfig, err := clientcmd.Load([]byte(kubeConfigRes.Message))
+	existingConfig = ensureKubeConfigMaps(existingConfig)
+
+	kubeConfig, err := clientcmd.Load([]byte(newConfigData))
 	if err != nil {
 		return err
 	}
-	// merge with existing kubeConfig
+
 	maps.Copy(existingConfig.Clusters, kubeConfig.Clusters)
 	maps.Copy(existingConfig.AuthInfos, kubeConfig.AuthInfos)
 	maps.Copy(existingConfig.Contexts, kubeConfig.Contexts)
-
-	// Set the current context to the new one.
-	// This might not always be the correct choice but given that someone
-	// explicitly required this workspace to be in a virtual cluster/space
-	// it's fair to assume they also want to point the current context to it
-	existingConfig.CurrentContext = kubeConfig.CurrentContext
-
-	err = clientcmd.WriteToFile(*existingConfig, configPath)
-	if err != nil {
-		return err
+	if kubeConfig.CurrentContext != "" {
+		existingConfig.CurrentContext = kubeConfig.CurrentContext
 	}
 
-	// ensure `remoteUser` owns kubeConfig
-	err = copy2.ChownR(kubeDir, user)
-	if err != nil {
-		return err
-	}
+	return clientcmd.WriteToFile(*existingConfig, configPath)
+}
 
-	return nil
+func ensureKubeConfigMaps(config *clientcmdapi.Config) *clientcmdapi.Config {
+	if config == nil {
+		config = clientcmdapi.NewConfig()
+	}
+	if config.Clusters == nil {
+		config.Clusters = map[string]*clientcmdapi.Cluster{}
+	}
+	if config.AuthInfos == nil {
+		config.AuthInfos = map[string]*clientcmdapi.AuthInfo{}
+	}
+	if config.Contexts == nil {
+		config.Contexts = map[string]*clientcmdapi.Context{}
+	}
+	return config
 }
 
 func markerFileExists(markerName string, markerContent string) (bool, error) {
@@ -341,8 +414,8 @@ func markerFileExists(markerName string, markerContent string) (bool, error) {
 	}
 
 	// write marker
-	_ = os.MkdirAll(filepath.Dir(markerName), 0777)
-	err = os.WriteFile(markerName, []byte(markerContent), 0644)
+	_ = os.MkdirAll(filepath.Dir(markerName), 0755) // #nosec G301 -- Standard directory permissions
+	err = os.WriteFile(markerName, []byte(markerContent), 0600)
 	if err != nil {
 		return false, fmt.Errorf("write marker: %w", err)
 	}
