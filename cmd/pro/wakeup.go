@@ -69,13 +69,14 @@ func (cmd *WakeupCmd) Run(ctx context.Context, args []string) error {
 		return err
 	}
 
-	workspaceInstance, err := platform.FindInstanceByName(ctx, baseClient, targetWorkspace, cmd.Project)
+	opts := platform.FindInstanceOptions{Name: targetWorkspace, ProjectName: cmd.Project}
+	workspaceInstance, err := platform.FindInstance(ctx, baseClient, opts)
 	if err != nil {
 		return err
 	}
 
 	if workspaceInstance.Status.Phase != storagev1.InstanceSleeping {
-		cmd.Log.Infof("Workspace %s is not sleeping", targetWorkspace, workspaceInstance.Name)
+		cmd.Log.Infof("Workspace %s is not sleeping", workspaceInstance.Name)
 		return nil
 	}
 

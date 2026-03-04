@@ -22,10 +22,7 @@ import (
 )
 
 const (
-	FleetURLFile = "/tmp/devpod-fleet.url.txt"
-)
-
-const (
+	FleetURLFileName    = "devpod-fleet.url.txt"
 	VersionOption       = "VERSION"
 	DownloadAmd64Option = "DOWNLOAD_AMD64"
 	DownloadArm64Option = "DOWNLOAD_ARM64"
@@ -95,7 +92,7 @@ func (o *FleetServer) Install(projectDir string) error {
 		return fmt.Errorf("unexpected status code while trying to download fleet from %s: %d", url, resp.StatusCode)
 	}
 
-	f, err := os.OpenFile(fleetBinary, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0755)
+	f, err := os.OpenFile(fleetBinary, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o755) // #nosec G302,G304
 	if err != nil {
 		return err
 	}
@@ -173,7 +170,8 @@ func (o *FleetServer) Start(binaryPath, location, projectDir string) error {
 		text := s.Text()
 		if strings.Contains(text, "https://fleet.jetbrains.com/") {
 			index := strings.Index(text, "https://fleet.jetbrains.com/")
-			err = os.WriteFile(FleetURLFile, []byte(strings.TrimSpace(text[index:])), 0600)
+			fleetURLFile := filepath.Join(location, FleetURLFileName)
+			err = os.WriteFile(fleetURLFile, []byte(strings.TrimSpace(text[index:])), 0o600) // #nosec G703
 			if err != nil {
 				return err
 			}
@@ -221,7 +219,7 @@ func prepareFleetServerLocation(userName string) (string, error) {
 	}
 
 	folder := filepath.Join(homeFolder, ".fleet-server")
-	err = os.MkdirAll(folder, 0755)
+	err = os.MkdirAll(folder, 0o755) // #nosec G301
 	if err != nil {
 		return "", err
 	}

@@ -55,16 +55,18 @@ func NewBuildCmd(flags *flags.GlobalFlags) *cobra.Command {
 
 			// check permissions
 			if !cmd.SkipPush && cmd.Repository != "" {
-				err = image.CheckPushPermissions(cmd.Repository)
-				if err != nil {
-					return fmt.Errorf("cannot push to %s, please make sure you have push permissions to repository %s", cmd.Repository, cmd.Repository)
+				if err := image.CheckPushPermissions(ctx, cmd.Repository); err != nil {
+					return fmt.Errorf(
+						"cannot push to %s, please make sure you have push permissions to repository: %w",
+						cmd.Repository,
+						err)
 				}
 			}
 
 			// validate tags
 			if len(cmd.Tag) > 0 {
 				if err := image.ValidateTags(cmd.Tag); err != nil {
-					return fmt.Errorf("cannot build image,: %w", err)
+					return fmt.Errorf("cannot build image: %w", err)
 				}
 			}
 
@@ -152,13 +154,7 @@ func NewBuildCmd(flags *flags.GlobalFlags) *cobra.Command {
 }
 
 func (cmd *BuildCmd) Run(ctx context.Context, client client.WorkspaceClient) error {
-	// build workspace
-	err := cmd.build(ctx, client, log.Default)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return cmd.build(ctx, client, log.Default)
 }
 
 func (cmd *BuildCmd) build(ctx context.Context, workspaceClient client.WorkspaceClient, log log.Logger) error {

@@ -57,14 +57,18 @@ func (cmd *WorkspaceCmd) Run(ctx context.Context, stdin io.Reader, stdout io.Wri
 		newInstance := &managementv1.DevPodWorkspaceInstance{}
 		err := json.Unmarshal([]byte(instanceEnv), newInstance)
 		if err != nil {
-			return fmt.Errorf("unmarshal workpace instance %s: %w", instanceEnv, err)
+			return fmt.Errorf("unmarshal workspace instance %s: %w", instanceEnv, err)
 		}
 		newInstance.TypeMeta = metav1.TypeMeta{} // ignore
 
 		projectName := project.ProjectFromNamespace(newInstance.GetNamespace())
-		oldInstance, err := platform.FindInstanceByName(ctx, baseClient, newInstance.GetName(), projectName)
+		opts := platform.FindInstanceOptions{Name: newInstance.GetName(), ProjectName: projectName}
+		oldInstance, err := platform.FindInstance(ctx, baseClient, opts)
 		if err != nil {
 			return err
+		}
+		if oldInstance == nil {
+			return fmt.Errorf("workspace instance %q not found in project %q", newInstance.GetName(), projectName)
 		}
 
 		updatedInstance, err := updateInstance(ctx, baseClient, oldInstance, newInstance, cmd.Log)
@@ -92,9 +96,13 @@ func (cmd *WorkspaceCmd) Run(ctx context.Context, stdin io.Reader, stdout io.Wri
 		return fmt.Errorf("workspaceID, workspaceUID or project not found: %s, %s, %s", workspaceID, workspaceUID, project)
 	}
 
-	oldInstance, err := platform.FindInstanceInProject(ctx, baseClient, workspaceUID, project)
+	opts := platform.FindInstanceOptions{UID: workspaceUID, ProjectName: project}
+	oldInstance, err := platform.FindInstance(ctx, baseClient, opts)
 	if err != nil {
 		return err
+	}
+	if oldInstance == nil {
+		return fmt.Errorf("workspace instance with UID %q not found in project %q", workspaceUID, project)
 	}
 
 	newInstance, err := form.UpdateInstance(ctx, baseClient, oldInstance, cmd.Log)

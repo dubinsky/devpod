@@ -66,13 +66,8 @@ var _ = ginkgo.Describe("testing up command for dockerfile builds", ginkgo.Label
 
 		ginkgo.By("Changing a file within the context")
 		scriptPath := filepath.Join(tempDir, "scripts", "alias.sh")
-		scriptFile, err := os.OpenFile(scriptPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-		framework.ExpectNoError(err)
 
-		_, err = scriptFile.Write([]byte("alias yr='date +%Y'"))
-		framework.ExpectNoError(err)
-
-		err = scriptFile.Close()
+		err = os.WriteFile(scriptPath, []byte("alias yr='date +%Y'"), 0o600)
 		framework.ExpectNoError(err)
 
 		ginkgo.By("Starting DevPod again with --recreate")
@@ -107,15 +102,7 @@ var _ = ginkgo.Describe("testing up command for dockerfile builds", ginkgo.Label
 
 		image1 := container.Config.LegacyImage
 
-		scriptFile, err := os.OpenFile(tempDir+"/scripts/install.sh",
-			os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
-		framework.ExpectNoError(err)
-
-		ginkgo.By("Changing a file within context")
-		_, err = scriptFile.Write([]byte("apt install python"))
-		framework.ExpectNoError(err)
-
-		err = scriptFile.Close()
+		err = os.WriteFile(filepath.Join(tempDir, "scripts", "install.sh"), []byte("apt install python"), 0o600)
 		framework.ExpectNoError(err)
 
 		ginkgo.By("Starting DevPod again with --recreate")

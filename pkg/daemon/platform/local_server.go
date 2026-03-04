@@ -361,6 +361,7 @@ func (l *localServer) projectTemplates(w http.ResponseWriter, r *http.Request, p
 
 	tryJSON(w, templateList)
 }
+
 func (l *localServer) projectClusters(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
 	projectName := params.ByName("project")
 	managementClient, err := l.pc.Management()
@@ -437,7 +438,7 @@ func (l *localServer) getWorkspace(w http.ResponseWriter, r *http.Request, param
 		return
 	}
 
-	instance, err := platform.FindInstance(r.Context(), l.pc, uid)
+	instance, err := platform.FindInstance(r.Context(), l.pc, platform.FindInstanceOptions{UID: uid})
 	if err != nil {
 		http.Error(w, fmt.Errorf("failed to get workspace with uid %s: %w", uid, err).Error(), http.StatusInternalServerError)
 		return
@@ -477,7 +478,8 @@ func (l *localServer) watchWorkspaces(w http.ResponseWriter, r *http.Request, pa
 		OwnerFilter:    ownerFilter,
 		PlatformClient: l.pc,
 		TsClient:       l.lc,
-		Log:            l.log},
+		Log:            l.log,
+	},
 		// we need to debounce events here to avoid spamming the client with too many events
 		throttle(func(instanceList []*ProWorkspaceInstance) {
 			if r.Context().Err() != nil {
@@ -575,7 +577,8 @@ func (l *localServer) updateWorkspace(w http.ResponseWriter, r *http.Request, pa
 	newInstance.TypeMeta = metav1.TypeMeta{}
 
 	projectName := project.ProjectFromNamespace(newInstance.GetNamespace())
-	oldInstance, err := platform.FindInstanceByName(r.Context(), l.pc, newInstance.GetName(), projectName)
+	opts := platform.FindInstanceOptions{Name: newInstance.GetName(), ProjectName: projectName}
+	oldInstance, err := platform.FindInstance(r.Context(), l.pc, opts)
 	if err != nil {
 		http.Error(w, fmt.Errorf("find old workspace: %w", err).Error(), http.StatusBadRequest)
 		return

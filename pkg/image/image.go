@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"regexp"
 
-	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
@@ -60,18 +59,40 @@ func GetImageForArch(ctx context.Context, image, arch string) (v1.Image, error) 
 
 	return img, err
 }
-func CheckPushPermissions(image string) error {
+
+func CheckPushPermissions(ctx context.Context, image string) error {
 	ref, err := name.ParseReference(image)
 	if err != nil {
-		return err
+		return fmt.Errorf("parse image reference %q: %w", image, err)
 	}
 
-	err = remote.CheckPushPermission(ref, authn.DefaultKeychain, http.DefaultTransport)
+	keychain, err := GetKeychain(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("create authentication keychain: %w", err)
+	}
+
+	// Create a context-aware transport to propagate cancellations and timeouts
+	transport := &contextAwareTransport{
+		ctx:       ctx,
+		transport: http.DefaultTransport,
+	}
+
+	if err := remote.CheckPushPermission(ref, keychain, transport); err != nil {
+		return fmt.Errorf("check push permissions: %w", err)
 	}
 
 	return nil
+}
+
+// contextAwareTransport wraps an http.RoundTripper to inject context into requests.
+type contextAwareTransport struct {
+	ctx       context.Context
+	transport http.RoundTripper
+}
+
+func (t *contextAwareTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	req = req.WithContext(t.ctx)
+	return t.transport.RoundTrip(req)
 }
 
 func GetImageConfig(ctx context.Context, image string, log log.Logger) (*v1.ConfigFile, v1.Image, error) {
