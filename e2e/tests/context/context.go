@@ -9,42 +9,56 @@ import (
 	"github.com/skevetter/devpod/e2e/framework"
 )
 
-var _ = DevPodDescribe("devpod context test suite", func() {
-	ginkgo.Context("testing context command", ginkgo.Label("context"), ginkgo.Ordered, func() {
-		ctx := context.Background()
-		initialDir, err := os.Getwd()
-		if err != nil {
-			panic(err)
-		}
+var _ = ginkgo.Describe(
+	"devpod context test suite",
+	ginkgo.Label("context"),
+	ginkgo.Ordered,
+	func() {
+		var initialDir string
 
-		ginkgo.It("create a new context, switch to it and delete afterwards", func() {
-			f := framework.NewDefaultFramework(initialDir + "/bin")
-
-			err = f.DevPodContextCreate(ctx, "test-context")
-			framework.ExpectNoError(err)
-
-			err = f.DevPodContextUse(context.Background(), "test-context")
-			framework.ExpectNoError(err)
-
-			err = f.DevPodContextDelete(context.Background(), "test-context")
+		ginkgo.BeforeAll(func() {
+			var err error
+			initialDir, err = os.Getwd()
 			framework.ExpectNoError(err)
 		})
 
-		ginkgo.It("should use shared context in IDE commands", func() {
+		ginkgo.It(
+			"create a new context, switch to it and delete afterwards",
+			func(ctx context.Context) {
+				f := framework.NewDefaultFramework(initialDir + "/bin")
+
+				var err error
+				err = f.DevPodContextCreate(ctx, "test-context")
+				framework.ExpectNoError(err)
+
+				ginkgo.DeferCleanup(func(cleanupCtx context.Context) {
+					cleanupErr := f.DevPodContextDelete(cleanupCtx, "test-context")
+					framework.ExpectNoError(cleanupErr)
+				})
+
+				err = f.DevPodContextUse(ctx, "test-context")
+				framework.ExpectNoError(err)
+			},
+		)
+
+		ginkgo.It("should use shared context in IDE commands", func(ctx context.Context) {
 			f := framework.NewDefaultFramework(initialDir + "/bin")
 
 			contextA := "test-ctx-a-ide"
 			contextB := "test-ctx-b-ide"
 
+			var err error
 			err = f.DevPodContextCreate(ctx, contextA)
 			framework.ExpectNoError(err)
+			ginkgo.DeferCleanup(func(cleanupCtx context.Context) {
+				_ = f.DevPodContextDelete(cleanupCtx, contextA)
+			})
 
 			err = f.DevPodContextCreate(ctx, contextB)
 			framework.ExpectNoError(err)
-
-			ginkgo.DeferCleanup(func() {
-				_ = f.DevPodContextDelete(ctx, contextA)
-				_ = f.DevPodContextDelete(ctx, contextB)
+			ginkgo.DeferCleanup(func(cleanupCtx context.Context) {
+				err = f.DevPodContextDelete(cleanupCtx, contextB)
+				framework.ExpectNoError(err)
 			})
 
 			err = f.DevPodContextUse(ctx, contextA)
@@ -87,8 +101,7 @@ var _ = DevPodDescribe("devpod context test suite", func() {
 				ginkgo.Fail("IDE was not set in context-b as expected")
 			}
 
-			err = os.Setenv("DEVPOD_CONTEXT", contextB)
-			framework.ExpectNoError(err)
+			ginkgo.GinkgoT().Setenv("DEVPOD_CONTEXT", contextB)
 
 			output, err = f.DevPodIDEList(ctx, "--output", "json")
 			framework.ExpectNoError(err)
@@ -111,5 +124,5 @@ var _ = DevPodDescribe("devpod context test suite", func() {
 				)
 			}
 		})
-	})
-})
+	},
+)
