@@ -34,8 +34,8 @@ func NewDaemonCmd(flags *flags.GlobalFlags) *cobra.Command {
 		Use:   "daemon",
 		Short: "Watches for activity and stops the server due to inactivity",
 		Args:  cobra.NoArgs,
-		RunE: func(_ *cobra.Command, _ []string) error {
-			return cmd.Run(context.Background())
+		RunE: func(cobraCmd *cobra.Command, _ []string) error {
+			return cmd.Run(cobraCmd.Context())
 		},
 	}
 	daemonCmd.Flags().
@@ -50,16 +50,15 @@ func (cmd *DaemonCmd) Run(ctx context.Context) error {
 	}
 
 	logger := log.NewFileLogger(filepath.Join(logFolder, "agent-daemon.log"), logrus.InfoLevel)
-	logger.Infof("Starting DevPod Daemon patrol at %s...", logFolder)
+	logger.Infof("starting DevPod daemon patrol at %s", logFolder)
 
 	// start patrolling
-	cmd.patrol(logger)
+	cmd.patrol(ctx, logger)
 
-	// should never reach this
 	return nil
 }
 
-func (cmd *DaemonCmd) patrol(log log.Logger) {
+func (cmd *DaemonCmd) patrol(ctx context.Context, log log.Logger) {
 	// make sure we don't immediately resleep on startup
 	cmd.initialTouch(log)
 
@@ -74,12 +73,18 @@ func (cmd *DaemonCmd) patrol(log log.Logger) {
 
 	// loop over workspace configs and check their last ModTime
 	for {
-		time.Sleep(interval)
-		cmd.doOnce(log)
+		timer := time.NewTimer(interval)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return
+		case <-timer.C:
+			cmd.doOnce(ctx, log)
+		}
 	}
 }
 
-func (cmd *DaemonCmd) doOnce(log log.Logger) {
+func (cmd *DaemonCmd) doOnce(ctx context.Context, log log.Logger) {
 	var latestActivity *time.Time
 	var workspace *provider2.AgentWorkspaceInfo
 
@@ -93,34 +98,21 @@ func (cmd *DaemonCmd) doOnce(log log.Logger) {
 	pattern := baseFolder + "/contexts/*/workspaces/*/" + provider2.WorkspaceConfigFile
 	matches, err := filepath.Glob(pattern)
 	if err != nil {
-		log.Errorf("Error globing pattern %s: %v", pattern, err)
+		log.Errorf("error globing pattern %s: %v", pattern, err)
 		return
 	}
 
 	// check when the last touch was
-	for _, match := range matches {
-		activity, activityWorkspace, err := getActivity(match, log)
-		if err != nil {
-			log.Errorf("Error checking for inactivity: %v", err)
-			continue
-		} else if activity == nil {
-			continue
-		}
-
-		if latestActivity == nil || activity.After(*latestActivity) {
-			latestActivity = activity
-			workspace = activityWorkspace
-		}
-	}
+	latestActivity, workspace = findLatestActivity(matches, log)
 
 	// should we run shutdown command?
 	if latestActivity == nil {
 		if len(matches) == 0 {
-			log.Infof("No workspaces found in path '%s'", baseFolder)
+			log.Infof("no workspaces found in path %q", baseFolder)
 		} else {
 			log.Infof(
-				"%d workspaces found in path '%s', but none of them had any auto-stop "+
-					"configured or were still running / never completed successfully",
+				"%d workspaces found in path %q, but none of them had any auto-stop "+
+					"configured or were still running / never completed",
 				len(matches),
 				baseFolder,
 			)
@@ -128,19 +120,28 @@ func (cmd *DaemonCmd) doOnce(log log.Logger) {
 		return
 	}
 
+	cmd.checkAndShutdown(ctx, latestActivity, workspace, log)
+}
+
+func (cmd *DaemonCmd) checkAndShutdown(
+	ctx context.Context,
+	latestActivity *time.Time,
+	workspace *provider2.AgentWorkspaceInfo,
+	log log.Logger,
+) {
 	// check timeout
 	timeout := agent.DefaultInactivityTimeout
 	if workspace.Agent.Timeout != "" {
 		var err error
 		timeout, err = time.ParseDuration(workspace.Agent.Timeout)
 		if err != nil {
-			log.Errorf("Error parsing inactivity timeout: %v", err)
+			log.Errorf("error parsing inactivity timeout: %v", err)
 			timeout = agent.DefaultInactivityTimeout
 		}
 	}
 	if latestActivity.Add(timeout).After(time.Now()) {
 		log.Infof(
-			"Workspace '%s' has latest activity at '%s', will auto-stop machine in %s",
+			"Workspace %q has latest activity at %q, will auto-stop machine in %s",
 			workspace.Workspace.ID,
 			latestActivity.String(),
 			time.Until(latestActivity.Add(timeout)).String(),
@@ -149,10 +150,14 @@ func (cmd *DaemonCmd) doOnce(log log.Logger) {
 	}
 
 	// run shutdown command
-	cmd.runShutdownCommand(workspace, log)
+	cmd.runShutdownCommand(ctx, workspace, log)
 }
 
-func (cmd *DaemonCmd) runShutdownCommand(workspace *provider2.AgentWorkspaceInfo, log log.Logger) {
+func (cmd *DaemonCmd) runShutdownCommand(
+	ctx context.Context,
+	workspace *provider2.AgentWorkspaceInfo,
+	log log.Logger,
+) {
 	// get environ
 	environ, err := custom.ToEnvironWithBinaries(workspace, log)
 	if err != nil {
@@ -163,12 +168,12 @@ func (cmd *DaemonCmd) runShutdownCommand(workspace *provider2.AgentWorkspaceInfo
 	// we run the timeout command now
 	buf := &bytes.Buffer{}
 	log.Infof(
-		"Run shutdown command for workspace %s: %s",
+		"run shutdown command for workspace %s: %s",
 		workspace.Workspace.ID,
 		strings.Join(workspace.Agent.Exec.Shutdown, " "),
 	)
 	err = clientimplementation.RunCommand(clientimplementation.RunCommandOptions{
-		Ctx:     context.Background(),
+		Ctx:     ctx,
 		Command: workspace.Agent.Exec.Shutdown,
 		Environ: environ,
 		Stdout:  buf,
@@ -176,7 +181,7 @@ func (cmd *DaemonCmd) runShutdownCommand(workspace *provider2.AgentWorkspaceInfo
 	})
 	if err != nil {
 		log.Errorf(
-			"Error running %s: %s%w",
+			"error running %s %s: %v",
 			strings.Join(workspace.Agent.Exec.Shutdown, " "),
 			buf.String(),
 			err,
@@ -184,7 +189,7 @@ func (cmd *DaemonCmd) runShutdownCommand(workspace *provider2.AgentWorkspaceInfo
 		return
 	}
 
-	log.Infof("Successful ran command: %s", buf.String())
+	log.Infof("ran command: %s", buf.String())
 }
 
 func (cmd *DaemonCmd) initialTouch(log log.Logger) {
@@ -198,19 +203,41 @@ func (cmd *DaemonCmd) initialTouch(log log.Logger) {
 	pattern := baseFolder + "/contexts/*/workspaces/*/" + provider2.WorkspaceConfigFile
 	matches, err := filepath.Glob(pattern)
 	if err != nil {
-		log.Errorf("Error globing pattern %s: %v", pattern, err)
+		log.Errorf("error globbing pattern %s: %v", pattern, err)
 		return
 	}
 
 	// check when the last touch was
 	now := time.Now()
 	for _, match := range matches {
-		err := os.Chtimes(match, now, now)
-		if err != nil {
-			log.Errorf("Error touching workspace config %s: %v", pattern, err)
-			return
+		if err := os.Chtimes(match, now, now); err != nil {
+			log.Errorf("error touching workspace config %s: %v", match, err)
+			continue
 		}
 	}
+}
+
+func findLatestActivity(
+	matches []string,
+	log log.Logger,
+) (*time.Time, *provider2.AgentWorkspaceInfo) {
+	var latestActivity *time.Time
+	var workspace *provider2.AgentWorkspaceInfo
+	for _, match := range matches {
+		activity, activityWorkspace, err := getActivity(match, log)
+		if err != nil {
+			log.Errorf("error checking for inactivity: %v", err)
+			continue
+		} else if activity == nil {
+			continue
+		}
+
+		if latestActivity == nil || activity.After(*latestActivity) {
+			latestActivity = activity
+			workspace = activityWorkspace
+		}
+	}
+	return latestActivity, workspace
 }
 
 func getActivity(
@@ -219,7 +246,7 @@ func getActivity(
 ) (*time.Time, *provider2.AgentWorkspaceInfo, error) {
 	workspace, err := agent.ParseAgentWorkspaceInfo(workspaceConfig)
 	if err != nil {
-		log.Errorf("Error reading %s: %v", workspaceConfig, err)
+		log.Errorf("error reading %s: %v", workspaceConfig, err)
 		return nil, nil, nil
 	}
 

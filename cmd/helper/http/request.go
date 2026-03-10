@@ -26,8 +26,8 @@ func NewRequestCmd() *cobra.Command {
 	requestCmd := &cobra.Command{
 		Use:   "request",
 		Short: "Executes a http(s) request",
-		RunE: func(_ *cobra.Command, args []string) error {
-			return cmd.Run(context.Background(), args)
+		RunE: func(cobraCmd *cobra.Command, args []string) error {
+			return cmd.Run(cobraCmd.Context(), args)
 		},
 	}
 
@@ -59,7 +59,12 @@ func (cmd *RequestCmd) Run(ctx context.Context, args []string) error {
 		)
 	}
 
-	request, err := http.NewRequest(cmd.Method, args[0], strings.NewReader(cmd.Data))
+	request, err := http.NewRequestWithContext(
+		ctx,
+		cmd.Method,
+		args[0],
+		strings.NewReader(cmd.Data),
+	)
 	if err != nil {
 		return err
 	}

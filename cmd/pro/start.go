@@ -100,8 +100,8 @@ func NewStartCmd(flags *proflags.GlobalFlags) *cobra.Command {
 	startCmd := &cobra.Command{
 		Use:   "start",
 		Short: "Start a Devpod Pro instance",
-		RunE: func(_ *cobra.Command, args []string) error {
-			return cmd.Run(context.Background())
+		RunE: func(cobraCmd *cobra.Command, args []string) error {
+			return cmd.Run(cobraCmd.Context())
 		},
 	}
 
@@ -153,7 +153,7 @@ func (cmd *StartCmd) Run(ctx context.Context) error {
 		cmd.LocalPort = "9898"
 	}
 
-	err := cmd.prepare()
+	err := cmd.prepare(ctx)
 	if err != nil {
 		return err
 	}
@@ -198,7 +198,7 @@ func (cmd *StartCmd) Run(ctx context.Context) error {
 		return err
 	}
 
-	err = cmd.upgrade()
+	err = cmd.upgrade(ctx)
 	if err != nil {
 		return err
 	}
@@ -206,13 +206,9 @@ func (cmd *StartCmd) Run(ctx context.Context) error {
 	return cmd.success(ctx)
 }
 
-func (cmd *StartCmd) upgrade() error {
-	extraArgs := []string{}
+func (cmd *StartCmd) appendHostArgs(extraArgs []string) []string {
 	if cmd.Host != "" || cmd.NoTunnel {
 		extraArgs = append(extraArgs, "--set-string", "env.DISABLE_LOFT_ROUTER=true")
-	}
-	if cmd.Password != "" {
-		extraArgs = append(extraArgs, "--set", "admin.password="+cmd.Password)
 	}
 	if cmd.Host != "" {
 		extraArgs = append(
@@ -232,25 +228,118 @@ func (cmd *StartCmd) upgrade() error {
 		)
 		extraArgs = append(extraArgs, "--set", "env.DEVPOD_SUBDOMAIN=*."+cmd.Host)
 	}
+
+	return extraArgs
+}
+
+func (cmd *StartCmd) buildUpgradeArgs() (extraArgs []string, cleanup func(), err error) {
+	cleanup = func() {}
+	extraArgs = cmd.appendHostArgs(extraArgs)
+	if cmd.Password != "" {
+		valuesFile, ferr := writePasswordValuesFile(cmd.Password)
+		if ferr != nil {
+			return nil, nil, ferr
+		}
+		cleanup = func() { _ = os.Remove(valuesFile) }
+		extraArgs = append(extraArgs, "--values", valuesFile)
+	}
+	extraArgs = cmd.appendReleaseArgs(extraArgs)
+
+	if cmd.Values != "" {
+		absValuesPath, err := filepath.Abs(cmd.Values)
+		if err != nil {
+			cleanup()
+			return nil, nil, err
+		}
+		extraArgs = append(extraArgs, "--values", absValuesPath)
+	}
+
+	return extraArgs, cleanup, nil
+}
+
+func (cmd *StartCmd) appendReleaseArgs(extraArgs []string) []string {
 	if cmd.Version != "" {
 		extraArgs = append(extraArgs, "--version", cmd.Version)
 	}
 	if cmd.Product != "" {
 		extraArgs = append(extraArgs, "--set", "product="+cmd.Product)
 	}
-
-	// Do not use --reuse-values if --reset flag is provided because this should be a new install and it will cause issues with `helm template`
 	if !cmd.Reset && cmd.ReuseValues {
 		extraArgs = append(extraArgs, "--reuse-values")
 	}
+	return extraArgs
+}
 
-	if cmd.Values != "" {
-		absValuesPath, err := filepath.Abs(cmd.Values)
-		if err != nil {
-			return err
-		}
-		extraArgs = append(extraArgs, "--values", absValuesPath)
+func writePasswordValuesFile(password string) (string, error) {
+	f, err := os.CreateTemp("", "devpod-values-*.yaml")
+	if err != nil {
+		return "", fmt.Errorf("create temp values file: %w", err)
 	}
+	name := f.Name()
+	if _, err := fmt.Fprintf(f, "admin:\n  password: %q\n", password); err != nil {
+		_ = os.Remove(name)
+		return "", fmt.Errorf("write temp values file: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		_ = os.Remove(name)
+		return "", fmt.Errorf("close temp values file: %w", err)
+	}
+	return name, nil
+}
+
+func (cmd *StartCmd) retryUpgradeAfterPurge(
+	ctx context.Context,
+	chartName, chartRepo string,
+	extraArgs []string,
+) error {
+	cmd.Log.Info("Trying to delete objects blocking current installation")
+
+	manifests, err := getReleaseManifests(
+		ctx,
+		chartName,
+		chartRepo,
+		cmd.Context,
+		cmd.Namespace,
+		extraArgs,
+		cmd.Log,
+	)
+	if err != nil {
+		return err
+	}
+
+	cmd.purgeManifests(ctx, manifests)
+
+	// Retry Loft installation
+	err = upgradeRelease(
+		ctx,
+		chartName,
+		chartRepo,
+		cmd.Context,
+		cmd.Namespace,
+		extraArgs,
+		cmd.Log,
+	)
+	if err != nil {
+		return errors.New(
+			err.Error() + fmt.Sprintf(
+				"\n\nExisting installation failed. Reach out to get help:\n- via Slack: %s (fastest option)\n"+
+					"- via Online Chat: %s\n- via Email: %s\n",
+				ansi.Color("https://slack.loft.sh/", "green+b"),
+				ansi.Color("https://loft.sh/", "green+b"),
+				ansi.Color("support@loft.sh", "green+b"),
+			),
+		)
+	}
+
+	return nil
+}
+
+func (cmd *StartCmd) upgrade(ctx context.Context) error {
+	extraArgs, cleanup, err := cmd.buildUpgradeArgs()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
 
 	chartName := cmd.ChartPath
 	chartRepo := ""
@@ -259,7 +348,7 @@ func (cmd *StartCmd) upgrade() error {
 		chartRepo = cmd.ChartRepo
 	}
 
-	err := upgradeRelease(chartName, chartRepo, cmd.Context, cmd.Namespace, extraArgs, cmd.Log)
+	err = upgradeRelease(ctx, chartName, chartRepo, cmd.Context, cmd.Namespace, extraArgs, cmd.Log)
 	if err != nil {
 		if !cmd.Reset {
 			return errors.New(
@@ -271,56 +360,24 @@ func (cmd *StartCmd) upgrade() error {
 		}
 
 		// Try to purge Loft and retry install
-		cmd.Log.Info("Trying to delete objects blocking current installation")
-
-		manifests, err := getReleaseManifests(
-			chartName,
-			chartRepo,
-			cmd.Context,
-			cmd.Namespace,
-			extraArgs,
-			cmd.Log,
-		)
-		if err != nil {
-			return err
-		}
-
-		kubectlDelete := exec.Command(
-			"kubectl",
-			"delete",
-			"-f",
-			"-",
-			"--ignore-not-found=true",
-			"--grace-period=0",
-			"--force",
-		)
-
-		buffer := bytes.Buffer{}
-		buffer.Write([]byte(manifests))
-
-		kubectlDelete.Stdin = &buffer
-		kubectlDelete.Stdout = os.Stdout
-		kubectlDelete.Stderr = os.Stderr
-
-		// Ignoring potential errors here
-		_ = kubectlDelete.Run()
-
-		// Retry Loft installation
-		err = upgradeRelease(chartName, chartRepo, cmd.Context, cmd.Namespace, extraArgs, cmd.Log)
-		if err != nil {
-			return errors.New(
-				err.Error() + fmt.Sprintf(
-					"\n\nExisting installation failed. Reach out to get help:\n- via Slack: %s (fastest option)\n"+
-						"- via Online Chat: %s\n- via Email: %s\n",
-					ansi.Color("https://slack.loft.sh/", "green+b"),
-					ansi.Color("https://loft.sh/", "green+b"),
-					ansi.Color("support@loft.sh", "green+b"),
-				),
-			)
-		}
+		return cmd.retryUpgradeAfterPurge(ctx, chartName, chartRepo, extraArgs)
 	}
 
 	return nil
+}
+
+func (cmd *StartCmd) purgeManifests(ctx context.Context, manifests string) {
+	kubectlDelete := exec.CommandContext(ctx, // #nosec G204 -- args are internally constructed
+		"kubectl", "delete", "-f", "-",
+		"--context", cmd.Context,
+		"--namespace", cmd.Namespace,
+		"--ignore-not-found=true",
+		"--grace-period=0", "--force",
+	)
+	kubectlDelete.Stdin = strings.NewReader(manifests)
+	kubectlDelete.Stdout = os.Stdout
+	kubectlDelete.Stderr = os.Stderr
+	_ = kubectlDelete.Run()
 }
 
 func (cmd *StartCmd) success(ctx context.Context) error {
@@ -856,84 +913,19 @@ func (cmd *StartCmd) prepareInstall(ctx context.Context) error {
 	return uninstall(ctx, cmd.KubeClient, cmd.RestConfig, cmd.Context, cmd.Namespace, log.Discard)
 }
 
-func (cmd *StartCmd) prepare() error {
+func (cmd *StartCmd) prepare(ctx context.Context) error {
 	loader, err := client.NewClientFromPath(cmd.Config)
 	if err != nil {
 		return err
 	}
-	loftConfig := loader.Config()
 
-	// first load the kube config
-	kubeClientConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
-		clientcmd.NewDefaultClientConfigLoadingRules(),
-		&clientcmd.ConfigOverrides{},
-	)
-
-	// load the raw config
-	kubeConfig, err := kubeClientConfig.RawConfig()
+	kubeClientConfig, err := cmd.resolveKubeConfig(loader)
 	if err != nil {
-		return fmt.Errorf(
-			"there is an error loading your current kube config (%w), please make sure you have access "+
-				"to a kubernetes cluster and the command `kubectl get namespaces` is working",
-			err,
-		)
+		return err
 	}
 
-	// we switch the context to the install config
-	contextToLoad := kubeConfig.CurrentContext
-	if cmd.Context != "" {
-		contextToLoad = cmd.Context
-	} else if loftConfig.LastInstallContext != "" && loftConfig.LastInstallContext != contextToLoad {
-		contextToLoad, err = cmd.Log.Question(&survey.QuestionOptions{
-			Question:     "Seems like you try to use 'devpod pro start' with a different kubernetes context than before. Please choose which kubernetes context you want to use",
-			DefaultValue: contextToLoad,
-			Options:      []string{contextToLoad, loftConfig.LastInstallContext},
-		})
-		if err != nil {
-			return err
-		}
-	}
-	cmd.Context = contextToLoad
-
-	loftConfig.LastInstallContext = contextToLoad
-	_ = loader.Save()
-
-	// kube client config
-	kubeClientConfig = clientcmd.NewNonInteractiveClientConfig(
-		kubeConfig,
-		contextToLoad,
-		&clientcmd.ConfigOverrides{},
-		clientcmd.NewDefaultClientConfigLoadingRules(),
-	)
-
-	// test for helm and kubectl
-	_, err = exec.LookPath("helm")
-	if err != nil {
-		return fmt.Errorf(
-			"seems like helm is not installed. Helm is required for the installation of loft. " +
-				"Please visit https://helm.sh/docs/intro/install/ for install instructions",
-		)
-	}
-
-	output, err := exec.Command("helm", "version").CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("seems like there are issues with your helm client: \n\n%s", output)
-	}
-
-	_, err = exec.LookPath("kubectl")
-	if err != nil {
-		return fmt.Errorf(
-			"seems like kubectl is not installed. Kubectl is required for the installation of loft. " +
-				"Please visit https://kubernetes.io/docs/tasks/tools/install-kubectl/ for install instructions",
-		)
-	}
-
-	output, err = exec.Command("kubectl", "version", "--context", contextToLoad).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf(
-			"seems like kubectl cannot connect to your Kubernetes cluster: \n\n%s",
-			output,
-		)
+	if err := checkCLITools(ctx, cmd.Context); err != nil {
+		return err
 	}
 
 	cmd.RestConfig, err = kubeClientConfig.ClientConfig()
@@ -956,11 +948,96 @@ func (cmd *StartCmd) prepare() error {
 	// Check if cluster has RBAC correctly configured
 	_, err = cmd.KubeClient.RbacV1().
 		ClusterRoles().
-		Get(context.Background(), "cluster-admin", metav1.GetOptions{})
+		Get(ctx, "cluster-admin", metav1.GetOptions{})
 	if err != nil {
 		return fmt.Errorf(
 			"error retrieving cluster role 'cluster-admin': %w. Please make sure RBAC is correctly configured in your cluster",
 			err,
+		)
+	}
+
+	return nil
+}
+
+func (cmd *StartCmd) resolveKubeConfig(
+	loader client.Client,
+) (clientcmd.ClientConfig, error) {
+	loftConfig := loader.Config()
+
+	kubeClientConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
+		clientcmd.NewDefaultClientConfigLoadingRules(),
+		&clientcmd.ConfigOverrides{},
+	)
+
+	kubeConfig, err := kubeClientConfig.RawConfig()
+	if err != nil {
+		return nil, fmt.Errorf(
+			"there is an error loading your current kube config (%w), please make sure you have access "+
+				"to a kubernetes cluster and the command `kubectl get namespaces` is working",
+			err,
+		)
+	}
+
+	contextToLoad := kubeConfig.CurrentContext
+	if cmd.Context != "" {
+		contextToLoad = cmd.Context
+	} else if loftConfig.LastInstallContext != "" && loftConfig.LastInstallContext != contextToLoad {
+		contextToLoad, err = cmd.Log.Question(&survey.QuestionOptions{
+			Question:     "Seems like you try to use 'devpod pro start' with a different kubernetes context than before. Please choose which kubernetes context you want to use",
+			DefaultValue: contextToLoad,
+			Options:      []string{contextToLoad, loftConfig.LastInstallContext},
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+	cmd.Context = contextToLoad
+
+	loftConfig.LastInstallContext = contextToLoad
+	_ = loader.Save()
+
+	return clientcmd.NewNonInteractiveClientConfig(
+		kubeConfig,
+		contextToLoad,
+		&clientcmd.ConfigOverrides{},
+		clientcmd.NewDefaultClientConfigLoadingRules(),
+	), nil
+}
+
+func checkCLITools(ctx context.Context, kubeContext string) error {
+	_, err := exec.LookPath("helm")
+	if err != nil {
+		return fmt.Errorf(
+			"seems like helm is not installed. Helm is required for the installation of loft. " +
+				"Please visit https://helm.sh/docs/intro/install/ for install instructions",
+		)
+	}
+
+	output, err := exec.Command("helm", "version").CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("seems like there are issues with your helm client: \n\n%s", output)
+	}
+
+	_, err = exec.LookPath("kubectl")
+	if err != nil {
+		return fmt.Errorf(
+			"seems like kubectl is not installed. Kubectl is required for the installation of loft. " +
+				"Please visit https://kubernetes.io/docs/tasks/tools/install-kubectl/ for install instructions",
+		)
+	}
+
+	kubectlCmd := exec.CommandContext(
+		ctx,
+		"kubectl",
+		"version",
+		"--context",
+		kubeContext,
+	) // #nosec G204
+	output, err = kubectlCmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf(
+			"seems like kubectl cannot connect to your Kubernetes cluster: \n\n%s",
+			output,
 		)
 	}
 
@@ -1053,7 +1130,7 @@ func (cmd *StartCmd) handleAlreadyExistingInstallation(ctx context.Context) erro
 
 	// Only upgrade if --upgrade flag is present or user decided to enable ingress
 	if cmd.Upgrade || enableIngress {
-		err := cmd.upgrade()
+		err := cmd.upgrade(ctx)
 		if err != nil {
 			return err
 		}
@@ -1330,7 +1407,8 @@ func uninstall(
 		namespace,
 	}
 	log.Infof("Executing command: helm %s", strings.Join(args, " "))
-	output, err := exec.Command("helm", args...).CombinedOutput()
+	helmCmd := exec.CommandContext(ctx, "helm", args...) // #nosec G204 -- internally constructed
+	output, err := helmCmd.CombinedOutput()
 	if err != nil {
 		log.Errorf("error during helm command: %s (%v)", string(output), err)
 	}
@@ -1355,14 +1433,14 @@ func uninstall(
 
 	err = kubeClient.CoreV1().
 		Secrets(namespace).
-		Delete(context.Background(), "loft-user-secret-admin", metav1.DeleteOptions{})
+		Delete(ctx, "loft-user-secret-admin", metav1.DeleteOptions{})
 	if err != nil && !kerrors.IsNotFound(err) {
 		return err
 	}
 
 	err = kubeClient.CoreV1().
 		Secrets(namespace).
-		Delete(context.Background(), LoftRouterDomainSecret, metav1.DeleteOptions{})
+		Delete(ctx, LoftRouterDomainSecret, metav1.DeleteOptions{})
 	if err != nil && !kerrors.IsNotFound(err) {
 		return err
 	}
@@ -1536,7 +1614,10 @@ func ensureIngressController(
 		log.WriteString(logrus.InfoLevel, "\n")
 		log.Infof("Executing command: helm %s\n", strings.Join(args, " "))
 		log.Info("Waiting for ingress controller deployment, this can take several minutes...")
-		helmCmd := exec.Command("helm", args...)
+		helmCmd := exec.CommandContext(
+			ctx,
+			"helm",
+			args...) // #nosec G204 -- helm args are constructed internally
 		output, err := helmCmd.CombinedOutput()
 		if err != nil {
 			return fmt.Errorf("error during helm command: %s (%w)", string(output), err)
@@ -1783,6 +1864,7 @@ func isHostReachable(ctx context.Context, host string) (bool, error) {
 }
 
 func upgradeRelease(
+	ctx context.Context,
 	chartName, chartRepo, kubeContext, namespace string,
 	extraArgs []string,
 	log log.Logger,
@@ -1808,7 +1890,10 @@ func upgradeRelease(
 	log.WriteString(logrus.InfoLevel, "\n")
 	log.Infof("Executing command: helm %s\n", strings.Join(args, " "))
 	log.Info("Waiting for helm command, this can take up to several minutes...")
-	helmCmd := exec.Command("helm", args...)
+	helmCmd := exec.CommandContext(
+		ctx,
+		"helm",
+		args...) // #nosec G204 -- helm args are constructed internally
 	if chartRepo != "" {
 		helmWorkDir, err := getHelmWorkdir(chartName)
 		if err != nil {
@@ -1827,6 +1912,7 @@ func upgradeRelease(
 }
 
 func getReleaseManifests(
+	ctx context.Context,
 	chartName, chartRepo, kubeContext, namespace string,
 	extraArgs []string,
 	_ log.Logger,
@@ -1846,7 +1932,10 @@ func getReleaseManifests(
 	}
 	args = append(args, extraArgs...)
 
-	helmCmd := exec.Command("helm", args...)
+	helmCmd := exec.CommandContext(
+		ctx,
+		"helm",
+		args...) // #nosec G204 -- helm args are constructed internally
 	if chartRepo != "" {
 		helmWorkDir, err := getHelmWorkdir(chartName)
 		if err != nil {

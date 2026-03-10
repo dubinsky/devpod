@@ -50,14 +50,14 @@ func NewLoginCmd(flags *proflags.GlobalFlags) *cobra.Command {
 	loginCmd := &cobra.Command{
 		Use:   "login",
 		Short: "Log into a DevPod Pro instance",
-		RunE: func(_ *cobra.Command, args []string) error {
+		RunE: func(cobraCmd *cobra.Command, args []string) error {
 			if len(args) != 1 {
 				return fmt.Errorf(
 					"please specify the DevPod Pro host, e.g. devpod pro login my-pro.my-domain.com",
 				)
 			}
 
-			return cmd.Run(context.Background(), args[0], log.Default)
+			return cmd.Run(cobraCmd.Context(), args[0], log.Default)
 		},
 	}
 
@@ -325,6 +325,9 @@ func login(
 
 	// log in
 	url = strings.TrimSuffix(url, "/")
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if accessKey != "" && !forceBrowser {
 		err = loader.LoginWithAccessKey(url, accessKey, true, true)
 	} else {

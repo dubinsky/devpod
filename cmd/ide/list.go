@@ -31,8 +31,9 @@ func NewListCmd(flags *flags.GlobalFlags) *cobra.Command {
 		Use:     "list",
 		Aliases: []string{"ls"},
 		Short:   "List available IDEs",
-		RunE: func(_ *cobra.Command, args []string) error {
-			return cmd.Run(context.Background())
+		Args:    cobra.NoArgs,
+		RunE: func(cobraCmd *cobra.Command, args []string) error {
+			return cmd.Run(cobraCmd.Context())
 		},
 	}
 
