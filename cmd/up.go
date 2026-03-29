@@ -15,6 +15,7 @@ import (
 	"strings"
 	"syscall"
 
+	"al.essio.dev/pkg/shellescape"
 	"github.com/blang/semver/v4"
 	"github.com/sirupsen/logrus"
 	"github.com/skevetter/devpod/cmd/flags"
@@ -382,13 +383,7 @@ func (cmd *UpCmd) configureWorkspace(
 		log.Info("SSH configuration completed in workspace")
 	}
 
-	if cmd.GitSSHSigningKey != "" {
-		if err := setupGitSSHSignature(cmd.GitSSHSigningKey, client, log); err != nil {
-			return err
-		}
-	}
-
-	return setupDotfiles(
+	if err := setupDotfiles(
 		cmd.DotfilesSource,
 		cmd.DotfilesScript,
 		cmd.DotfilesScriptEnvFile,
@@ -396,7 +391,19 @@ func (cmd *UpCmd) configureWorkspace(
 		client,
 		devPodConfig,
 		log,
-	)
+	); err != nil {
+		return err
+	}
+
+	// Run after dotfiles so the signing config isn't overwritten by a
+	// dotfiles installer that replaces .gitconfig.
+	if cmd.GitSSHSigningKey != "" {
+		if err := setupGitSSHSignature(cmd.GitSSHSigningKey, client); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // openIDE opens the configured IDE.
@@ -1539,7 +1546,6 @@ func collectDotfilesScriptEnvKeyvaluePairs(envFiles []string) ([]string, error) 
 func setupGitSSHSignature(
 	signingKey string,
 	client client2.BaseWorkspaceClient,
-	log log.Logger,
 ) error {
 	execPath, err := os.Executable()
 	if err != nil {
@@ -1555,7 +1561,8 @@ func setupGitSSHSignature(
 		remoteUser = "root"
 	}
 
-	err = exec.Command(
+	// #nosec G204 -- execPath is from os.Executable(), not user input
+	out, err := exec.Command(
 		execPath,
 		"ssh",
 		"--agent-forwarding=true",
@@ -1565,10 +1572,13 @@ func setupGitSSHSignature(
 		"--context",
 		client.Context(),
 		client.Workspace(),
-		"--command", fmt.Sprintf("devpod agent git-ssh-signature-helper %s", signingKey),
-	).Run()
+		"--command",
+		shellescape.QuoteCommand(
+			[]string{"devpod", "agent", "git-ssh-signature-helper", signingKey},
+		),
+	).CombinedOutput()
 	if err != nil {
-		log.Error("failure in setting up git ssh signature helper")
+		return fmt.Errorf("setup git ssh signature helper: %w, output: %s", err, string(out))
 	}
 	return nil
 }
