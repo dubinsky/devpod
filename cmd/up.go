@@ -15,6 +15,7 @@ import (
 	"strings"
 	"syscall"
 
+	"al.essio.dev/pkg/shellescape"
 	"github.com/blang/semver/v4"
 	"github.com/sirupsen/logrus"
 	"github.com/skevetter/devpod/cmd/flags"
@@ -93,7 +94,7 @@ func (cmd *UpCmd) execute(cobraCmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	if devPodConfig.ContextOption(config.ContextOptionSSHStrictHostKeyChecking) == "true" {
+	if devPodConfig.ContextOption(config.ContextOptionSSHStrictHostKeyChecking) == config.BoolTrue {
 		cmd.StrictHostKeyChecking = true
 	}
 
@@ -179,6 +180,9 @@ func (cmd *UpCmd) registerDevContainerFlags(upCmd *cobra.Command) {
 	upCmd.Flags().
 		StringVar(&cmd.FallbackImage, "fallback-image", "",
 			"The fallback image to use if no devcontainer configuration has been detected")
+	upCmd.Flags().
+		StringVar(&cmd.AdditionalFeatures, "additional-features", "",
+			`Additional features to apply to the dev container (JSON as per "features" section in devcontainer.json)`)
 }
 
 func (cmd *UpCmd) registerIDEFlags(upCmd *cobra.Command) {
@@ -358,11 +362,11 @@ func (cmd *UpCmd) configureWorkspace(
 ) error {
 	if cmd.ConfigureSSH {
 		devPodHome := ""
-		if envDevPodHome, ok := os.LookupEnv("DEVPOD_HOME"); ok {
+		if envDevPodHome, ok := os.LookupEnv(config.EnvHome); ok {
 			devPodHome = envDevPodHome
 		}
 		setupGPGAgentForwarding := cmd.GPGAgentForwarding ||
-			devPodConfig.ContextOption(config.ContextOptionGPGAgentForwarding) == "true"
+			devPodConfig.ContextOption(config.ContextOptionGPGAgentForwarding) == config.BoolTrue
 		sshConfigIncludePath := devPodConfig.ContextOption(config.ContextOptionSSHConfigIncludePath)
 
 		if err := configureSSH(client, configureSSHParams{
@@ -379,13 +383,7 @@ func (cmd *UpCmd) configureWorkspace(
 		log.Info("SSH configuration completed in workspace")
 	}
 
-	if cmd.GitSSHSigningKey != "" {
-		if err := setupGitSSHSignature(cmd.GitSSHSigningKey, client, log); err != nil {
-			return err
-		}
-	}
-
-	return setupDotfiles(
+	if err := setupDotfiles(
 		cmd.DotfilesSource,
 		cmd.DotfilesScript,
 		cmd.DotfilesScriptEnvFile,
@@ -393,7 +391,19 @@ func (cmd *UpCmd) configureWorkspace(
 		client,
 		devPodConfig,
 		log,
-	)
+	); err != nil {
+		return err
+	}
+
+	// Run after dotfiles so the signing config isn't overwritten by a
+	// dotfiles installer that replaces .gitconfig.
+	if cmd.GitSSHSigningKey != "" {
+		if err := setupGitSSHSignature(cmd.GitSSHSigningKey, client); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // openIDE opens the configured IDE.
@@ -449,7 +459,8 @@ func (o *ideOpener) open(
 
 	switch ideName {
 	case string(config.IDEVSCode), string(config.IDEVSCodeInsiders), string(config.IDECursor),
-		string(config.IDECodium), string(config.IDEPositron), string(config.IDEWindsurf), string(config.IDEAntigravity):
+		string(config.IDECodium), string(config.IDEPositron), string(config.IDEWindsurf),
+		string(config.IDEAntigravity), string(config.IDEBob):
 		return o.openVSCodeFlavor(ctx, ideName, folder, ideOptions)
 
 	case string(config.IDERustRover), string(config.IDEGoland), string(config.IDEPyCharm),
@@ -518,12 +529,13 @@ func (o *ideOpener) openVSCodeFlavor(
 		string(config.IDEPositron):       vscode.FlavorPositron,
 		string(config.IDEWindsurf):       vscode.FlavorWindsurf,
 		string(config.IDEAntigravity):    vscode.FlavorAntigravity,
+		string(config.IDEBob):            vscode.FlavorBob,
 	}
 
 	params := vscode.OpenParams{
 		Workspace: o.client.Workspace(),
 		Folder:    folder,
-		NewWindow: vscode.Options.GetValue(ideOptions, vscode.OpenNewWindow) == "true",
+		NewWindow: vscode.Options.GetValue(ideOptions, vscode.OpenNewWindow) == config.BoolTrue,
 		Flavor:    flavorMap[ideName],
 		Log:       o.log,
 	}
@@ -809,12 +821,14 @@ func (cmd *UpCmd) devPodUpMachine(
 	}
 
 	return sshtunnel.ExecuteCommand(ctx, sshtunnel.ExecuteCommandOptions{
-		Client:         client,
-		AddPrivateKeys: devPodConfig.ContextOption(config.ContextOptionSSHAddPrivateKeys) == "true",
-		AgentInject:    agentInjectFunc,
-		SSHCommand:     sshTunnelCmd,
-		Command:        agentCommand,
-		Log:            log,
+		Client: client,
+		AddPrivateKeys: devPodConfig.ContextOption(
+			config.ContextOptionSSHAddPrivateKeys,
+		) == config.BoolTrue,
+		AgentInject: agentInjectFunc,
+		SSHCommand:  sshTunnelCmd,
+		Command:     agentCommand,
+		Log:         log,
 		TunnelServerFunc: func(ctx context.Context, stdin io.WriteCloser, stdout io.Reader) (*config2.Result, error) {
 			return tunnelserver.RunUpServer(
 				ctx,
@@ -857,7 +871,7 @@ func startJupyterNotebookInBrowser(
 
 	// wait until reachable then open browser
 	targetURL := fmt.Sprintf("http://localhost:%d/lab", jupyterPort)
-	if jupyter.Options.GetValue(ideOptions, jupyter.OpenOption) == "true" {
+	if jupyter.Options.GetValue(ideOptions, jupyter.OpenOption) == config.BoolTrue {
 		go func() {
 			err = open2.Open(ctx, targetURL, logger)
 			if err != nil {
@@ -915,7 +929,7 @@ func startRStudioInBrowser(
 
 	// wait until reachable then open browser
 	targetURL := fmt.Sprintf("http://localhost:%d", port)
-	if rstudio.Options.GetValue(ideOptions, rstudio.OpenOption) == "true" {
+	if rstudio.Options.GetValue(ideOptions, rstudio.OpenOption) == config.BoolTrue {
 		go func() {
 			err = open2.Open(ctx, targetURL, logger)
 			if err != nil {
@@ -1008,7 +1022,7 @@ func startVSCodeInBrowser(
 
 	// wait until reachable then open browser
 	targetURL := fmt.Sprintf("http://localhost:%d/?folder=%s", vscodePort, workspaceFolder)
-	if openvscode.Options.GetValue(ideOptions, openvscode.OpenOption) == "true" {
+	if openvscode.Options.GetValue(ideOptions, openvscode.OpenOption) == config.BoolTrue {
 		go func() {
 			err = open2.Open(ctx, targetURL, logger)
 			if err != nil {
@@ -1023,7 +1037,10 @@ func startVSCodeInBrowser(
 
 	// start in browser
 	logger.Infof("Starting vscode in browser mode at %s", targetURL)
-	forwardPorts := openvscode.Options.GetValue(ideOptions, openvscode.ForwardPortsOption) == "true"
+	forwardPorts := openvscode.Options.GetValue(
+		ideOptions,
+		openvscode.ForwardPortsOption,
+	) == config.BoolTrue
 	extraPorts := []string{fmt.Sprintf("%s:%d", vscodeAddress, openvscode.DefaultVSCodePort)}
 	return startBrowserTunnel(
 		ctx,
@@ -1203,13 +1220,13 @@ func startBrowserTunnel(
 
 			configureDockerCredentials := devPodConfig.ContextOption(
 				config.ContextOptionSSHInjectDockerCredentials,
-			) == "true"
+			) == config.BoolTrue
 			configureGitCredentials := devPodConfig.ContextOption(
 				config.ContextOptionSSHInjectGitCredentials,
-			) == "true"
+			) == config.BoolTrue
 			configureGitSSHSignatureHelper := devPodConfig.ContextOption(
 				config.ContextOptionGitSSHSignatureForwarding,
-			) == "true"
+			) == config.BoolTrue
 
 			// run in container
 			err := tunnel.RunServices(
@@ -1290,7 +1307,7 @@ func configureSSH(client client2.BaseWorkspaceClient, params configureSSHParams)
 func mergeDevPodUpOptions(baseOptions *provider2.CLIOptions) error {
 	oldOptions := *baseOptions
 	found, err := clientimplementation.DecodeOptionsFromEnv(
-		clientimplementation.DevPodFlagsUp,
+		config.EnvFlagsUp,
 		baseOptions,
 	)
 	if err != nil {
@@ -1434,7 +1451,7 @@ func buildDotCmdAgentArguments(
 		dotfilesRepo,
 	}
 
-	if devPodConfig.ContextOption(config.ContextOptionSSHStrictHostKeyChecking) == "true" {
+	if devPodConfig.ContextOption(config.ContextOptionSSHStrictHostKeyChecking) == config.BoolTrue {
 		agentArguments = append(agentArguments, "--strict-host-key-checking")
 	}
 
@@ -1536,7 +1553,6 @@ func collectDotfilesScriptEnvKeyvaluePairs(envFiles []string) ([]string, error) 
 func setupGitSSHSignature(
 	signingKey string,
 	client client2.BaseWorkspaceClient,
-	log log.Logger,
 ) error {
 	execPath, err := os.Executable()
 	if err != nil {
@@ -1552,7 +1568,8 @@ func setupGitSSHSignature(
 		remoteUser = "root"
 	}
 
-	err = exec.Command(
+	// #nosec G204 -- execPath is from os.Executable(), not user input
+	out, err := exec.Command(
 		execPath,
 		"ssh",
 		"--agent-forwarding=true",
@@ -1562,10 +1579,13 @@ func setupGitSSHSignature(
 		"--context",
 		client.Context(),
 		client.Workspace(),
-		"--command", fmt.Sprintf("devpod agent git-ssh-signature-helper %s", signingKey),
-	).Run()
+		"--command",
+		shellescape.QuoteCommand(
+			[]string{config.BinaryName, "agent", "git-ssh-signature-helper", signingKey},
+		),
+	).CombinedOutput()
 	if err != nil {
-		log.Error("failure in setting up git ssh signature helper")
+		return fmt.Errorf("setup git ssh signature helper: %w, output: %s", err, string(out))
 	}
 	return nil
 }

@@ -1,4 +1,9 @@
-import { BottomActionBar, BottomActionBarError, CollapsibleSection } from "@/components"
+import {
+  BottomActionBar,
+  BottomActionBarError,
+  CollapsibleSection,
+  ErrorMessageBox,
+} from "@/components"
 import { CheckIcon } from "@chakra-ui/icons"
 import {
   Box,
@@ -113,12 +118,15 @@ function ProviderOptionsForm(props: TProviderOptionsFormProps) {
 
       if (newName && newName !== providerID) {
         await rename.run({ oldProviderID: providerID, newProviderID: newName })
-        navigate(Routes.toProvider(newName), { replace: true })
-      } else {
-        await queryClient.invalidateQueries({ queryKey: QueryKeys.PROVIDERS })
+        // Navigate to the provider detail page when NOT in a modal flow.
+        // In the modal flow, onFinish handles closing the modal.
+        if (!props.isModal) {
+          navigate(Routes.toProvider(newName), { replace: true })
+        }
       }
+      await queryClient.invalidateQueries({ queryKey: QueryKeys.PROVIDERS })
     },
-    [queryClient, navigate, rename]
+    [queryClient, navigate, rename, props.isModal]
   )
 
   return <ConfigureOptionsForm {...props} onSave={handleSave} />
@@ -262,7 +270,11 @@ function ConfigureOptionsForm({
   )
 
   if (!exists(provider) || !allOptions) {
-    return <Spinner style={{ margin: "0 auto 3rem auto" }} />
+    return error ? (
+      <ErrorMessageBox error={error} />
+    ) : (
+      <Spinner style={{ margin: "0 auto 3rem auto" }} />
+    )
   }
 
   return (
@@ -487,6 +499,9 @@ function useOptions(
         await client.providers.setOptionsDry(providerID, { options: {}, reconfigure: false })
       ).unwrap()
     },
+    // Only fetch options once the provider is confirmed in the cache.
+    // Prevents transient "provider not found" errors when adding a new provider.
+    enabled: !!provider,
   })
 
   const {

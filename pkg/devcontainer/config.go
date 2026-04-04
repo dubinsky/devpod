@@ -1,12 +1,15 @@
 package devcontainer
 
 import (
+	"encoding/json"
 	"fmt"
 	"maps"
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 
+	pkgconfig "github.com/skevetter/devpod/pkg/config"
 	"github.com/skevetter/devpod/pkg/devcontainer/config"
 	"github.com/skevetter/devpod/pkg/devcontainer/crane"
 	"github.com/skevetter/devpod/pkg/language"
@@ -26,7 +29,7 @@ func (r *runner) getRawConfig(options provider2.CLIOptions) (*config.DevContaine
 		} else {
 			rawParsedConfig.Origin = path.Join(
 				filepath.ToSlash(r.LocalWorkspaceFolder),
-				".devcontainer.devpod.json",
+				".devcontainer."+pkgconfig.BinaryName+".json",
 			)
 		}
 		return rawParsedConfig, nil
@@ -190,6 +193,26 @@ func (r *runner) substitute(
 		parsedConfig.Dockerfile = ""
 		parsedConfig.DockerfileContainer = config.DockerfileContainer{}
 		parsedConfig.ImageContainer = config.ImageContainer{Image: options.DevContainerImage}
+	}
+
+	// merge additional features from CLI flag
+	if options.AdditionalFeatures != "" {
+		additionalFeatures := make(map[string]any)
+		if err := json.Unmarshal(
+			[]byte(options.AdditionalFeatures),
+			&additionalFeatures,
+		); err != nil {
+			return nil, nil, fmt.Errorf("parse --additional-features JSON: %w", err)
+		}
+		if parsedConfig.Features == nil {
+			parsedConfig.Features = make(map[string]any)
+		}
+		maps.Copy(parsedConfig.Features, additionalFeatures)
+		r.Log.Infof(
+			"Merged %d additional feature(s): %v",
+			len(additionalFeatures),
+			slices.Collect(maps.Keys(additionalFeatures)),
+		)
 	}
 
 	parsedConfig.Origin = configFile

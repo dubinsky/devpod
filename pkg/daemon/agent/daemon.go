@@ -11,9 +11,10 @@ import (
 	"runtime"
 
 	"github.com/loft-sh/api/v4/pkg/devpod"
+	"github.com/skevetter/devpod/pkg/command"
+	pkgconfig "github.com/skevetter/devpod/pkg/config"
 	"github.com/skevetter/devpod/pkg/devcontainer/config"
 	provider2 "github.com/skevetter/devpod/pkg/provider"
-	"github.com/skevetter/devpod/pkg/single"
 	"github.com/skevetter/log"
 	"github.com/takama/daemon"
 )
@@ -100,7 +101,11 @@ func InstallDaemon(agentDir string, interval string, log log.Logger) error {
 	}
 
 	// check if admin
-	service, err := daemon.New("devpod", "DevPod Agent Service", daemon.SystemDaemon)
+	service, err := daemon.New(
+		pkgconfig.BinaryName,
+		pkgconfig.DaemonServiceDescription,
+		daemon.SystemDaemon,
+	)
 	if err != nil {
 		return err
 	}
@@ -123,7 +128,7 @@ func InstallDaemon(agentDir string, interval string, log log.Logger) error {
 	if err != nil && !errors.Is(err, daemon.ErrAlreadyRunning) {
 		log.Warnf("Error starting service: %v", err)
 
-		err = single.Single("daemon.pid", func() (*exec.Cmd, error) {
+		err = command.StartBackgroundOnce("devpod.daemon", func() (*exec.Cmd, error) {
 			executable, err := os.Executable()
 			if err != nil {
 				return nil, err
@@ -148,7 +153,11 @@ func RemoveDaemon() error {
 	}
 
 	// check if admin
-	service, err := daemon.New("devpod", "DevPod Agent Service", daemon.SystemDaemon)
+	service, err := daemon.New(
+		pkgconfig.BinaryName,
+		pkgconfig.DaemonServiceDescription,
+		daemon.SystemDaemon,
+	)
 	if err != nil {
 		return err
 	}

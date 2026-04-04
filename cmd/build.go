@@ -71,13 +71,15 @@ func NewBuildCmd(flags *flags.GlobalFlags) *cobra.Command {
 				}
 			}
 
-			if devPodConfig.ContextOption(config.ContextOptionSSHStrictHostKeyChecking) == "true" {
+			if devPodConfig.ContextOption(
+				config.ContextOptionSSHStrictHostKeyChecking,
+			) == config.BoolTrue {
 				cmd.StrictHostKeyChecking = true
 			}
 
 			// create a temporary workspace
 			exists := workspace2.Exists(ctx, devPodConfig, args, "", cmd.Owner, log.Default)
-			sshConfigFile, err := os.CreateTemp("", "devpodssh.config")
+			sshConfigFile, err := os.CreateTemp("", config.BinaryName+"ssh.config")
 			if err != nil {
 				return err
 			}
@@ -136,6 +138,9 @@ func NewBuildCmd(flags *flags.GlobalFlags) *cobra.Command {
 			"The container image to use, this will override the devcontainer.json value in the project")
 	buildCmd.Flags().
 		StringVar(&cmd.DevContainerPath, "devcontainer-path", "", "The path to the devcontainer.json relative to the project")
+	buildCmd.Flags().
+		StringVar(&cmd.AdditionalFeatures, "additional-features", "",
+			`Additional features to apply to the dev container (JSON as per "features" section in devcontainer.json)`)
 	buildCmd.Flags().
 		StringSliceVar(&cmd.ProviderOptions, "provider-option", []string{}, "Provider option in the form KEY=VALUE")
 	buildCmd.Flags().

@@ -36,6 +36,7 @@ func NewAddCmd(f *flags.GlobalFlags) *cobra.Command {
 	addCmd := &cobra.Command{
 		Use:   "add [name, GitHub link, URL or path]",
 		Short: "Adds a new provider to DevPod",
+		Args:  cobra.MaximumNArgs(1),
 		PreRunE: func(cobraCommand *cobra.Command, args []string) error {
 			if cmd.FromExisting != "" {
 				return cobraCommand.MarkFlagRequired("name")
@@ -75,7 +76,7 @@ func (cmd *AddCmd) Run(ctx context.Context, devPodConfig *config.Config, args []
 	if providerName != "" {
 		if provider.ProviderNameRegEx.MatchString(providerName) {
 			return fmt.Errorf(
-				"provider name can only include lower case letters, numbers or dashes",
+				"provider name can only include lowercase letters, numbers or dashes",
 			)
 		}
 		if len(providerName) > 32 {
@@ -102,7 +103,7 @@ func (cmd *AddCmd) Run(ctx context.Context, devPodConfig *config.Config, args []
 	var providerConfig *provider.ProviderConfig
 	var options []string
 	if cmd.FromExisting != "" {
-		if devPodConfig.Current() != nil &&
+		if devPodConfig.Current() == nil ||
 			devPodConfig.Current().Providers[cmd.FromExisting] == nil {
 			return fmt.Errorf("provider %s does not exist", cmd.FromExisting)
 		}

@@ -66,7 +66,7 @@ options:
     description: If defined, DevPod will use the given storage class to create the persistent volume claim. You will need to ensure the storage class exists in your cluster!
     global: true
   PVC_ACCESS_MODE:
-    description: If defined, DevPod will use the given access mode to create the persistent volume claim. You will need to ensure the storage class support the given access mode, e.g. RWO or ROX or RWX or RWOP
+    description: If defined, DevPod will use the given access mode to create the persistent volume claim. You will need to ensure the storage class supports the given access mode, e.g. RWO or ROX or RWX or RWOP
     global: true
   PVC_ANNOTATIONS:
     description: If defined, DevPod will use add the given annotations to the main workspace pvc

@@ -392,7 +392,7 @@ function UpdateSettings() {
             {downloadLink && (
               <Text fontSize="sm" width="full">
                 Visit{" "}
-                <Link onClick={() => client.open(downloadLink)} fontSize="sm">
+                <Link onClick={() => client.openUrl(downloadLink)} fontSize="sm">
                   Github
                 </Link>{" "}
                 to download {selectedVersion}
@@ -523,6 +523,16 @@ function ExperimentalSettings() {
           />
           <FormLabel marginBottom="0" whiteSpace="nowrap" fontSize="sm">
             Antigravity
+          </FormLabel>
+        </HStack>
+
+        <HStack width="full" align="center">
+          <Switch
+            isChecked={settings.experimental_bob}
+            onChange={(e) => set("experimental_bob", e.target.checked)}
+          />
+          <FormLabel marginBottom="0" whiteSpace="nowrap" fontSize="sm">
+            Bob
           </FormLabel>
         </HStack>
       </SettingSection>

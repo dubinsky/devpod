@@ -8,9 +8,9 @@ import (
 	"strings"
 
 	"github.com/skevetter/devpod/pkg/command"
+	pkgconfig "github.com/skevetter/devpod/pkg/config"
 	"github.com/skevetter/devpod/pkg/file"
 	"github.com/skevetter/log"
-	"github.com/skevetter/log/scanner"
 )
 
 const (
@@ -18,16 +18,16 @@ const (
 
 devpod agent git-ssh-signature "$@"
 `
-	HelperScriptPath  = "/usr/local/bin/devpod-ssh-signature"
-	GitConfigTemplate = `
+)
+
+var GitConfigTemplate = `
 [gpg "ssh"]
-	program = devpod-ssh-signature
+	program = ` + pkgconfig.SSHSignatureHelperName + `
 [gpg]
 	format = ssh
 [user]
 	signingkey = %s
 `
-)
 
 // ConfigureHelper sets up the Git SSH signing helper script and updates the Git configuration for the specified user.
 //
@@ -61,7 +61,7 @@ func ConfigureHelper(userName, gitSigningKey string, log log.Logger) error {
 
 // RemoveHelper removes the git SSH signing helper script and any related configuration.
 func RemoveHelper(userName string) error {
-	if err := os.Remove(HelperScriptPath); err != nil && !os.IsNotExist(err) {
+	if err := os.Remove(pkgconfig.SSHSignatureHelperPath); err != nil && !os.IsNotExist(err) {
 		return err
 	}
 
@@ -83,7 +83,7 @@ func createHelperScript() error {
 		"sudo",
 		"bash",
 		"-c",
-		fmt.Sprintf("echo '%s' > %s", HelperScript, HelperScriptPath),
+		fmt.Sprintf("echo '%s' > %s", HelperScript, pkgconfig.SSHSignatureHelperPath),
 	)
 	if err := cmd.Run(); err != nil {
 		return err
@@ -92,7 +92,8 @@ func createHelperScript() error {
 }
 
 func makeScriptExecutable() error {
-	return exec.Command("sudo", "chmod", "+x", HelperScriptPath).Run()
+	cmd := exec.Command("sudo", "chmod", "+x", pkgconfig.SSHSignatureHelperPath) // #nosec G204
+	return cmd.Run()
 }
 
 func getGitConfigPath(userName string) (string, error) {
@@ -109,7 +110,7 @@ func updateGitConfig(gitConfigPath, userName, gitSigningKey string) error {
 		return err
 	}
 
-	if !strings.Contains(configContent, "program = devpod-ssh-signature") {
+	if !strings.Contains(configContent, "program = "+pkgconfig.SSHSignatureHelperName) {
 		newConfig := fmt.Sprintf(GitConfigTemplate, gitSigningKey)
 		newContent := removeSignatureHelper(configContent) + newConfig
 		if err := writeGitConfig(gitConfigPath, newContent, userName); err != nil {
@@ -150,27 +151,71 @@ func removeGitConfigHelper(gitConfigPath, userName string) error {
 }
 
 func removeSignatureHelper(content string) string {
-	scan := scanner.NewScanner(strings.NewReader(content))
-	isGpgSetup := false
-	out := []string{}
+	inGpgSSHSection := false
+	inGpgSection := false
+	var gpgSSHBuffer []string
+	var out []string
 
-	for scan.Scan() {
-		line := scan.Text()
-		if strings.TrimSpace(line) == "[gpg \"ssh\"]" {
-			isGpgSetup = true
-			continue
-		} else if strings.TrimSpace(line) == "[gpg]" {
-			isGpgSetup = true
-		} else if isGpgSetup {
-			trimmed := strings.TrimSpace(line)
-			if len(trimmed) > 0 && trimmed[0] == '[' {
-				isGpgSetup = false
-			} else {
+	for line := range strings.Lines(content) {
+		line = strings.TrimRight(line, "\n")
+		trimmed := strings.TrimSpace(line)
+
+		if isSectionHeader(trimmed) {
+			if inGpgSSHSection {
+				out = append(out, filterGpgSSHSection(gpgSSHBuffer)...)
+				gpgSSHBuffer = nil
+			}
+			inGpgSSHSection = trimmed == `[gpg "ssh"]`
+			inGpgSection = trimmed == "[gpg]"
+			if inGpgSSHSection {
+				gpgSSHBuffer = append(gpgSSHBuffer, line)
 				continue
 			}
 		}
-		out = append(out, line)
+
+		if inGpgSSHSection {
+			gpgSSHBuffer = append(gpgSSHBuffer, line)
+			continue
+		}
+
+		if !isDevpodManagedGpgKey(inGpgSection, trimmed) {
+			out = append(out, line)
+		}
+	}
+
+	if inGpgSSHSection {
+		out = append(out, filterGpgSSHSection(gpgSSHBuffer)...)
 	}
 
 	return strings.Join(out, "\n")
+}
+
+func isSectionHeader(trimmed string) bool {
+	return len(trimmed) > 0 && trimmed[0] == '['
+}
+
+func isDevpodManagedGpgKey(inGpgSection bool, trimmed string) bool {
+	if !inGpgSection || len(trimmed) == 0 || trimmed[0] == '[' {
+		return false
+	}
+	return strings.HasPrefix(trimmed, "format = ssh")
+}
+
+// filterGpgSSHSection removes devpod-managed keys from a buffered [gpg "ssh"]
+// section. Returns the header + remaining user keys, or nil if no user keys remain.
+func filterGpgSSHSection(lines []string) []string {
+	if len(lines) == 0 {
+		return nil
+	}
+	var kept []string
+	for _, line := range lines[1:] {
+		trimmed := strings.TrimSpace(line)
+		if !strings.HasPrefix(trimmed, "program = "+pkgconfig.SSHSignatureHelperName) {
+			kept = append(kept, line)
+		}
+	}
+	if len(kept) == 0 {
+		return nil
+	}
+	return append([]string{lines[0]}, kept...)
 }
