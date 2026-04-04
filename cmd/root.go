@@ -146,32 +146,22 @@ func BuildRoot() *cobra.Command {
 	rootCmd.AddCommand(NewTroubleshootCmd(globalFlags))
 	rootCmd.AddCommand(NewPingCmd(globalFlags))
 
-	inheritCommandFlagsFromEnvironment(rootCmd, "")
+	inheritCommandFlagsFromEnvironment(rootCmd)
 
 	return rootCmd
 }
 
-func inheritCommandFlagsFromEnvironment(cmd *cobra.Command, commandPrefix string) {
-	inheritFlagsFromEnvironment(cmd.Flags(), commandPrefix)
-	inheritFlagsFromEnvironment(cmd.PersistentFlags(), commandPrefix)
+func inheritCommandFlagsFromEnvironment(cmd *cobra.Command) {
+	inheritFlagsFromEnvironment(cmd.Flags())
+	inheritFlagsFromEnvironment(cmd.PersistentFlags())
 
 	for _, sub := range cmd.Commands() {
-		var subCommandPrefix string
-		if commandPrefix == "" {
-			fields := strings.Fields(sub.Use)
-			if len(fields) == 0 {
-				continue
-			}
-			subCommandPrefix = strings.ToUpper(fields[0]) + "_"
-		} else {
-			subCommandPrefix = commandPrefix
-		}
-		inheritCommandFlagsFromEnvironment(sub, subCommandPrefix)
+		inheritCommandFlagsFromEnvironment(sub)
 	}
 }
 
 // Inherits default values for all flags that have a corresponding environment variable set.
-func inheritFlagsFromEnvironment(flags *flag.FlagSet, commandPrefix string) {
+func inheritFlagsFromEnvironment(flags *flag.FlagSet) {
 	flags.VisitAll(func(flag *flag.Flag) {
 		// calculate environment variable name from flag name
 		suffix := strings.ToUpper(strings.ReplaceAll(flag.Name, "-", "_"))
@@ -179,24 +169,13 @@ func inheritFlagsFromEnvironment(flags *flag.FlagSet, commandPrefix string) {
 		// do not prepend the env prefix if the flag name already starts with it
 		// (applies to one flag - "devpod-home").
 		var environmentVariable string
-		isCanonical := strings.HasPrefix(suffix, config.EnvPrefix)
-		if isCanonical {
+		if strings.HasPrefix(suffix, config.EnvPrefix) {
 			environmentVariable = suffix
 		} else {
-			environmentVariable = config.EnvPrefix + commandPrefix + suffix
+			environmentVariable = config.EnvPrefix + suffix
 		}
 
-		// Fall back to the legacy unprefixed variable (e.g. DEVPOD_IDE)
-		// if the subcommand-scoped one (e.g. DEVPOD_UP_IDE) is not set.
-		// Skip fallback for canonical vars (e.g. devpod-home) where the
-		// primary lookup already uses the correct env var name.
-		value, exists := os.LookupEnv(environmentVariable)
-		if !exists && commandPrefix != "" && !isCanonical {
-			legacyVar := config.EnvPrefix + suffix
-			value, exists = os.LookupEnv(legacyVar)
-		}
-
-		if exists {
+		if value, exists := os.LookupEnv(environmentVariable); exists {
 			// set the variable holding the flag's value to the default supplied by the environment
 			err := flag.Value.Set(value)
 			if err != nil {
