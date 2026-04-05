@@ -91,6 +91,10 @@ const (
 	// EnvProviderPrefix is the prefix for provider-specific option env vars (append provider name + "_").
 	EnvProviderPrefix = EnvPrefix + "PROVIDER_"
 
+	// EnvProviderName is the name of the active provider passed to subprocess environments.
+	// Use DEVPOD_PROVIDER_NAME (not DEVPOD_PROVIDER) to avoid collision with the --provider CLI flag.
+	EnvProviderName = EnvPrefix + "PROVIDER_NAME"
+
 	// --- Provider-scoped env vars (set when running provider commands) ---.
 
 	// EnvProviderWorkspaceID is the workspace identifier passed to providers.
