@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -13,20 +14,14 @@ func TestToEnvironment_ProviderNameDoesNotCollideWithFlag(t *testing.T) {
 	for _, entry := range result {
 		key := strings.SplitN(entry, "=", 2)[0]
 		if key == "DEVPOD_PROVIDER" {
-			t.Errorf(
-				"found env var with key DEVPOD_PROVIDER which collides with the --provider CLI flag; use DEVPOD_PROVIDER_NAME instead",
+			t.Error(
+				"found DEVPOD_PROVIDER in env; use DEVPOD_PROVIDER_NAME instead",
 			)
 		}
 	}
 
-	found := false
-	for _, entry := range result {
-		if entry == config.EnvProviderName+"=my-provider" {
-			found = true
-			break
-		}
-	}
-	if !found {
+	expected := config.EnvProviderName + "=my-provider"
+	if !slices.Contains(result, expected) {
 		t.Errorf(
 			"expected %s=my-provider in environment, but it was not found",
 			config.EnvProviderName,
