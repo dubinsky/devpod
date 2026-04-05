@@ -91,9 +91,9 @@ func (cmd *AddCmd) Run(ctx context.Context, devPodConfig *config.Config, args []
 	if providerSource == "" {
 		var sourceEnvVar string
 		if providerName == "" {
-			sourceEnvVar = "DEVPOD_PROVIDER_SOURCE"
+			sourceEnvVar = "DEVPOD_ADD_PROVIDER_SOURCE"
 		} else {
-			sourceEnvVar = "DEVPOD_PROVIDER_" + strings.ToUpper(
+			sourceEnvVar = "DEVPOD_ADD_PROVIDER_" + strings.ToUpper(
 				strings.ReplaceAll(providerName, "-", "_"),
 			) + "_SOURCE"
 		}
