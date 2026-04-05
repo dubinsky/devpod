@@ -3,7 +3,6 @@ package provider
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/sirupsen/logrus"
@@ -84,22 +83,6 @@ func (cmd *AddCmd) Run(ctx context.Context, devPodConfig *config.Config, args []
 		}
 	}
 
-	providerSource := ""
-	if len(args) == 1 {
-		providerSource = args[0]
-	}
-	if providerSource == "" {
-		var sourceEnvVar string
-		if providerName == "" {
-			sourceEnvVar = "DEVPOD_ADD_PROVIDER_SOURCE"
-		} else {
-			sourceEnvVar = "DEVPOD_ADD_PROVIDER_" + strings.ToUpper(
-				strings.ReplaceAll(providerName, "-", "_"),
-			) + "_SOURCE"
-		}
-		providerSource = os.Getenv(sourceEnvVar)
-	}
-
 	var providerConfig *provider.ProviderConfig
 	var options []string
 	if cmd.FromExisting != "" {
@@ -124,11 +107,11 @@ func (cmd *AddCmd) Run(ctx context.Context, devPodConfig *config.Config, args []
 			cmd.Options,
 		)
 	} else {
-		if providerSource == "" {
-			return fmt.Errorf("please specify either a name, GitHub link, URL or path, " +
+		if len(args) != 1 {
+			return fmt.Errorf("please specify either a URL or path, " +
 				"e.g. devpod provider add https://path/to/my/provider.yaml")
 		}
-		c, err := workspace.AddProvider(devPodConfig, providerName, providerSource, log.Default)
+		c, err := workspace.AddProvider(devPodConfig, providerName, args[0], log.Default)
 		if err != nil {
 			return err
 		}
