@@ -55,3 +55,26 @@ func (s *GitSSHSignatureTestSuite) TestParseDefaultsToSign() {
 	assert.Equal(s.T(), "sign", result.command)
 	assert.Equal(s.T(), "/tmp/buffer", result.bufferFile)
 }
+
+func (s *GitSSHSignatureTestSuite) TestParseEmptyArgs() {
+	result := parseSSHKeygenArgs([]string{})
+	assert.Equal(s.T(), "sign", result.command)
+	assert.Equal(s.T(), "", result.bufferFile)
+	assert.Equal(s.T(), "", result.certPath)
+	assert.Equal(s.T(), "", result.namespace)
+}
+
+func (s *GitSSHSignatureTestSuite) TestParseWithUFlag() {
+	// Git passes -U when using a literal SSH key value. The parser must
+	// still identify certPath and bufferFile with -U present.
+	args := []string{"-Y", "sign", "-n", "git", "-f", "/key.pub", "-U", "/tmp/buf"}
+	result := parseSSHKeygenArgs(args)
+	assert.Equal(s.T(), "/key.pub", result.certPath)
+	assert.Equal(s.T(), "/tmp/buf", result.bufferFile)
+}
+
+func (s *GitSSHSignatureTestSuite) TestParseBufferFileWithSpaces() {
+	args := []string{"-Y", "sign", "-n", "git", "-f", "/key.pub", "/tmp/my buffer file"}
+	result := parseSSHKeygenArgs(args)
+	assert.Equal(s.T(), "/tmp/my buffer file", result.bufferFile)
+}

@@ -15,7 +15,6 @@ import (
 	"strings"
 	"syscall"
 
-	"al.essio.dev/pkg/shellescape"
 	"github.com/blang/semver/v4"
 	"github.com/sirupsen/logrus"
 	"github.com/skevetter/devpod/cmd/flags"
@@ -395,17 +394,6 @@ func (cmd *UpCmd) configureWorkspace(
 		return err
 	}
 
-	// Run after dotfiles so the signing config isn't overwritten by a
-	// dotfiles installer that replaces .gitconfig.
-	gitSSHSignatureEnabled := devPodConfig.ContextOption(
-		config.ContextOptionGitSSHSignatureForwarding,
-	) == "true"
-	if cmd.GitSSHSigningKey != "" && gitSSHSignatureEnabled {
-		if err := setupGitSSHSignature(cmd.GitSSHSigningKey, client); err != nil {
-			return err
-		}
-	}
-
 	return nil
 }
 
@@ -481,6 +469,7 @@ func (o *ideOpener) open(
 			user,
 			ideOptions,
 			o.cmd.SSHAuthSockID,
+			o.cmd.GitSSHSigningKey,
 			o.log,
 		)
 
@@ -499,6 +488,7 @@ func (o *ideOpener) open(
 			user,
 			ideOptions,
 			o.cmd.SSHAuthSockID,
+			o.cmd.GitSSHSigningKey,
 			o.log,
 		)
 
@@ -511,6 +501,7 @@ func (o *ideOpener) open(
 			user,
 			ideOptions,
 			o.cmd.SSHAuthSockID,
+			o.cmd.GitSSHSigningKey,
 			o.log,
 		)
 
@@ -854,6 +845,7 @@ func startJupyterNotebookInBrowser(
 	user string,
 	ideOptions map[string]config.OptionValue,
 	authSockID string,
+	gitSSHSigningKey string,
 	logger log.Logger,
 ) error {
 	if forwardGpg {
@@ -900,6 +892,7 @@ func startJupyterNotebookInBrowser(
 		false,
 		extraPorts,
 		authSockID,
+		gitSSHSigningKey,
 		logger,
 	)
 }
@@ -912,6 +905,7 @@ func startRStudioInBrowser(
 	user string,
 	ideOptions map[string]config.OptionValue,
 	authSockID string,
+	gitSSHSigningKey string,
 	logger log.Logger,
 ) error {
 	if forwardGpg {
@@ -957,6 +951,7 @@ func startRStudioInBrowser(
 		false,
 		extraPorts,
 		authSockID,
+		gitSSHSigningKey,
 		logger,
 	)
 }
@@ -1005,6 +1000,7 @@ func startVSCodeInBrowser(
 	workspaceFolder, user string,
 	ideOptions map[string]config.OptionValue,
 	authSockID string,
+	gitSSHSigningKey string,
 	logger log.Logger,
 ) error {
 	if forwardGpg {
@@ -1054,6 +1050,7 @@ func startVSCodeInBrowser(
 		forwardPorts,
 		extraPorts,
 		authSockID,
+		gitSSHSigningKey,
 		logger,
 	)
 }
@@ -1150,6 +1147,7 @@ func startBrowserTunnel(
 	forwardPorts bool,
 	extraPorts []string,
 	authSockID string,
+	gitSSHSigningKey string,
 	logger log.Logger,
 ) error {
 	// Setup a backhaul SSH connection using the remote user so there is an AUTH SOCK to use
@@ -1245,6 +1243,7 @@ func startBrowserTunnel(
 					ConfigureDockerCredentials:     configureDockerCredentials,
 					ConfigureGitCredentials:        configureGitCredentials,
 					ConfigureGitSSHSignatureHelper: configureGitSSHSignatureHelper,
+					GitSSHSigningKey:               gitSSHSigningKey,
 					Log:                            logger,
 				},
 			)
@@ -1551,44 +1550,6 @@ func collectDotfilesScriptEnvKeyvaluePairs(envFiles []string) ([]string, error) 
 		keyValues = append(keyValues, envFromFile...)
 	}
 	return keyValues, nil
-}
-
-func setupGitSSHSignature(
-	signingKey string,
-	client client2.BaseWorkspaceClient,
-) error {
-	execPath, err := os.Executable()
-	if err != nil {
-		return err
-	}
-
-	remoteUser, err := devssh.GetUser(
-		client.WorkspaceConfig().ID,
-		client.WorkspaceConfig().SSHConfigPath,
-		client.WorkspaceConfig().SSHConfigIncludePath,
-	)
-	if err != nil {
-		remoteUser = "root"
-	}
-
-	// #nosec G204 -- execPath is from os.Executable(), not user input
-	out, err := exec.Command(
-		execPath,
-		"ssh",
-		"--user",
-		remoteUser,
-		"--context",
-		client.Context(),
-		client.Workspace(),
-		"--command",
-		shellescape.QuoteCommand(
-			[]string{config.BinaryName, "agent", "git-ssh-signature-helper", signingKey},
-		),
-	).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("setup git ssh signature helper: %w, output: %s", err, string(out))
-	}
-	return nil
 }
 
 func performGpgForwarding(

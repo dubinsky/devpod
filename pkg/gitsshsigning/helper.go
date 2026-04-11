@@ -52,7 +52,7 @@ func ConfigureHelper(userName, gitSigningKey string, log log.Logger) error {
 	}
 	log.Debugf("Got config path: %v", gitConfigPath)
 	if err := updateGitConfig(gitConfigPath, userName, gitSigningKey); err != nil {
-		log.Errorf("Failed updating git configuration: %w", err)
+		log.Errorf("Failed updating git configuration: %v", err)
 		return err
 	}
 
@@ -110,12 +110,14 @@ func updateGitConfig(gitConfigPath, userName, gitSigningKey string) error {
 		return err
 	}
 
-	if !strings.Contains(configContent, "program = "+pkgconfig.SSHSignatureHelperName) {
-		newConfig := fmt.Sprintf(GitConfigTemplate, gitSigningKey)
-		newContent := removeSignatureHelper(configContent) + newConfig
-		if err := writeGitConfig(gitConfigPath, newContent, userName); err != nil {
-			return err
-		}
+	// Always remove any existing devpod-managed signing config and rewrite
+	// with the current key. The previous guard (checking whether the program
+	// line already existed) would silently skip key updates after unclean
+	// shutdowns or key rotations.
+	newConfig := fmt.Sprintf(GitConfigTemplate, gitSigningKey)
+	newContent := removeSignatureHelper(configContent) + newConfig
+	if err := writeGitConfig(gitConfigPath, newContent, userName); err != nil {
+		return err
 	}
 
 	return nil
@@ -151,40 +153,76 @@ func removeGitConfigHelper(gitConfigPath, userName string) error {
 }
 
 func removeSignatureHelper(content string) string {
-	inGpgSSHSection := false
-	inGpgSection := false
-	var gpgSSHBuffer []string
+	type sectionKind int
+	const (
+		sectionNone sectionKind = iota
+		sectionGpgSSH
+		sectionGpg
+		sectionUser
+	)
+
+	current := sectionNone
+	var buf []string
 	var out []string
+
+	flush := func() {
+		switch current {
+		case sectionGpgSSH:
+			out = append(out, filterSection(buf, func(trimmed string) bool {
+				return strings.HasPrefix(trimmed, "program = "+pkgconfig.SSHSignatureHelperName)
+			})...)
+		case sectionGpg:
+			out = append(out, filterSection(buf, func(trimmed string) bool {
+				return strings.HasPrefix(trimmed, "format = ssh")
+			})...)
+		case sectionUser:
+			// Only strip [user] sections that contain nothing but signingkey
+			// entries — these are the ones appended by GitConfigTemplate.
+			// Sections with other entries (name, email, etc.) are user-owned
+			// and must be preserved intact to avoid data loss.
+			if isDevpodOnlyUserSection(buf) {
+				// Drop the entire section — it was appended by devpod.
+			} else {
+				out = append(out, buf...)
+			}
+		}
+		buf = nil
+	}
 
 	for line := range strings.Lines(content) {
 		line = strings.TrimRight(line, "\n")
 		trimmed := strings.TrimSpace(line)
 
 		if isSectionHeader(trimmed) {
-			if inGpgSSHSection {
-				out = append(out, filterGpgSSHSection(gpgSSHBuffer)...)
-				gpgSSHBuffer = nil
+			if current != sectionNone {
+				flush()
 			}
-			inGpgSSHSection = trimmed == `[gpg "ssh"]`
-			inGpgSection = trimmed == "[gpg]"
-			if inGpgSSHSection {
-				gpgSSHBuffer = append(gpgSSHBuffer, line)
+			switch trimmed {
+			case `[gpg "ssh"]`:
+				current = sectionGpgSSH
+			case "[gpg]":
+				current = sectionGpg
+			case "[user]":
+				current = sectionUser
+			default:
+				current = sectionNone
+			}
+			if current != sectionNone {
+				buf = append(buf, line)
 				continue
 			}
 		}
 
-		if inGpgSSHSection {
-			gpgSSHBuffer = append(gpgSSHBuffer, line)
+		if current != sectionNone {
+			buf = append(buf, line)
 			continue
 		}
 
-		if !isDevpodManagedGpgKey(inGpgSection, trimmed) {
-			out = append(out, line)
-		}
+		out = append(out, line)
 	}
 
-	if inGpgSSHSection {
-		out = append(out, filterGpgSSHSection(gpgSSHBuffer)...)
+	if current != sectionNone {
+		flush()
 	}
 
 	return strings.Join(out, "\n")
@@ -194,23 +232,33 @@ func isSectionHeader(trimmed string) bool {
 	return len(trimmed) > 0 && trimmed[0] == '['
 }
 
-func isDevpodManagedGpgKey(inGpgSection bool, trimmed string) bool {
-	if !inGpgSection || len(trimmed) == 0 || trimmed[0] == '[' {
-		return false
+// isDevpodOnlyUserSection returns true when a buffered [user] section contains
+// nothing but signingkey entries. Such sections are appended by GitConfigTemplate
+// and are safe to remove. Sections with other entries (name, email, etc.) belong
+// to the user and must be preserved.
+func isDevpodOnlyUserSection(lines []string) bool {
+	for _, line := range lines[1:] {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		if !strings.HasPrefix(trimmed, "signingkey = ") {
+			return false
+		}
 	}
-	return strings.HasPrefix(trimmed, "format = ssh")
+	return true
 }
 
-// filterGpgSSHSection removes devpod-managed keys from a buffered [gpg "ssh"]
-// section. Returns the header + remaining user keys, or nil if no user keys remain.
-func filterGpgSSHSection(lines []string) []string {
+// filterSection removes lines matching the predicate from a buffered section.
+// Returns the header + remaining lines, or nil if no lines remain after filtering.
+func filterSection(lines []string, isManaged func(string) bool) []string {
 	if len(lines) == 0 {
 		return nil
 	}
 	var kept []string
 	for _, line := range lines[1:] {
 		trimmed := strings.TrimSpace(line)
-		if !strings.HasPrefix(trimmed, "program = "+pkgconfig.SSHSignatureHelperName) {
+		if !isManaged(trimmed) {
 			kept = append(kept, line)
 		}
 	}

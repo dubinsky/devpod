@@ -144,29 +144,15 @@ var _ = ginkgo.Describe("devpod ssh test suite", ginkgo.Label("ssh"), ginkgo.Ord
 			err = f.DevPodUp(ctx, tempDir, "--git-ssh-signing-key", keyPath+".pub")
 			framework.ExpectNoError(err)
 
-			// Step 1: Verify the helper script was installed and executable
-			out, err := f.DevPodSSH(ctx, tempDir,
-				"test -x /usr/local/bin/devpod-ssh-signature && echo EXISTS",
-			)
-			framework.ExpectNoError(err)
-			gomega.Expect(strings.TrimSpace(out)).To(
-				gomega.Equal("EXISTS"),
-				"devpod-ssh-signature helper script should be installed and executable",
-			)
-
-			// Step 2: Verify git config was written correctly
-			out, err = f.DevPodSSH(ctx, tempDir, "git config --global gpg.ssh.program")
-			framework.ExpectNoError(err)
-			gomega.Expect(strings.TrimSpace(out)).To(gomega.Equal("devpod-ssh-signature"))
-
-			out, err = f.DevPodSSH(ctx, tempDir, "git config --global gpg.format")
-			framework.ExpectNoError(err)
-			gomega.Expect(strings.TrimSpace(out)).To(gomega.Equal("ssh"))
-
-			// Step 3: Attempt a signed commit with the credentials server
-			// tunnel active. The signing request is forwarded over the tunnel
-			// to the host where ssh-keygen performs the actual signing.
+			// Verify helper installation, git config, and a signed commit
+			// in a single SSH session with --start-services so the
+			// credentials server tunnel is active. The helper is installed
+			// asynchronously by the credentials server, so retry briefly.
 			commitCmd := strings.Join([]string{
+				"for i in $(seq 1 30); do test -x /usr/local/bin/devpod-ssh-signature && break; sleep 1; done",
+				"test -x /usr/local/bin/devpod-ssh-signature",
+				"test \"$(git config --global gpg.ssh.program)\" = devpod-ssh-signature",
+				"test \"$(git config --global gpg.format)\" = ssh",
 				"cd /tmp",
 				"git init test-sign-repo",
 				"cd test-sign-repo",
@@ -178,13 +164,19 @@ var _ = ginkgo.Describe("devpod ssh test suite", ginkgo.Label("ssh"), ginkgo.Ord
 				"git commit -m 'signed test commit' 2>&1",
 			}, " && ")
 
-			stdout, stderr, err := f.ExecCommandCapture(ctx, []string{
+			// The signing key must be passed on each SSH invocation so the
+			// credentials server can configure the helper inside the container.
+			sshBase := []string{
 				"ssh",
 				"--agent-forwarding",
 				"--start-services",
+				"--git-ssh-signing-key", keyPath + ".pub",
 				tempDir,
-				"--command", commitCmd,
-			})
+			}
+
+			stdout, stderr, err := f.ExecCommandCapture(ctx,
+				append(sshBase, "--command", commitCmd),
+			)
 			ginkgo.GinkgoWriter.Printf("commit stdout: %s\n", stdout)
 			ginkgo.GinkgoWriter.Printf("commit stderr: %s\n", stderr)
 			framework.ExpectNoError(err)
@@ -194,9 +186,7 @@ var _ = ginkgo.Describe("devpod ssh test suite", ginkgo.Label("ssh"), ginkgo.Ord
 				"git commit should succeed with the signed test commit message",
 			)
 
-			// Step 4: Verify the commit is actually signed with a valid SSH signature.
-			// Read the public key that was used for signing so we can build
-			// an allowed-signers file inside the workspace for verification.
+			// Verify the commit is signed with a valid SSH signature.
 			pubKeyBytes, err := os.ReadFile(
 				keyPath + ".pub",
 			) // #nosec G304 -- test file with controlled path
@@ -205,20 +195,14 @@ var _ = ginkgo.Describe("devpod ssh test suite", ginkgo.Label("ssh"), ginkgo.Ord
 
 			verifyCmd := strings.Join([]string{
 				"cd /tmp/test-sign-repo",
-				// Create allowed signers file mapping the test email to our public key
 				"echo 'test@example.com " + pubKey + "' > /tmp/allowed_signers",
 				"git config gpg.ssh.allowedSignersFile /tmp/allowed_signers",
-				// Verify the commit signature is valid
 				"git verify-commit HEAD 2>&1",
 			}, " && ")
 
-			stdout, stderr, err = f.ExecCommandCapture(ctx, []string{
-				"ssh",
-				"--agent-forwarding",
-				"--start-services",
-				tempDir,
-				"--command", verifyCmd,
-			})
+			stdout, stderr, err = f.ExecCommandCapture(ctx,
+				append(sshBase, "--command", verifyCmd),
+			)
 			ginkgo.GinkgoWriter.Printf("verify stdout: %s\n", stdout)
 			ginkgo.GinkgoWriter.Printf("verify stderr: %s\n", stderr)
 			framework.ExpectNoError(err)
@@ -232,13 +216,9 @@ var _ = ginkgo.Describe("devpod ssh test suite", ginkgo.Label("ssh"), ginkgo.Ord
 
 			// And confirm the signature log shows the correct principal
 			logCmd := "cd /tmp/test-sign-repo && git log --show-signature -1 2>&1"
-			stdout, stderr, err = f.ExecCommandCapture(ctx, []string{
-				"ssh",
-				"--agent-forwarding",
-				"--start-services",
-				tempDir,
-				"--command", logCmd,
-			})
+			stdout, stderr, err = f.ExecCommandCapture(ctx,
+				append(sshBase, "--command", logCmd),
+			)
 			ginkgo.GinkgoWriter.Printf("log stdout: %s\n", stdout)
 			ginkgo.GinkgoWriter.Printf("log stderr: %s\n", stderr)
 			framework.ExpectNoError(err)
