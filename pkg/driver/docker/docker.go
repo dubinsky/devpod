@@ -91,6 +91,29 @@ func (d *dockerDriver) CommandDevContainer(
 		return fmt.Errorf("container not found")
 	}
 
+	status := strings.ToLower(container.State.Status)
+	if status == "dead" || status == "removing" {
+		return fmt.Errorf(
+			"%w: container %s is %q",
+			docker.ErrContainerTerminal,
+			container.ID,
+			status,
+		)
+	}
+	if status != "running" {
+		d.Log.Infof(
+			"container %s is not running (status=%s), restarting",
+			container.ID, status,
+		)
+		if err := d.Docker.StartContainer(ctx, container.ID); err != nil {
+			return fmt.Errorf("restart container: %w", err)
+		}
+		if err := d.Docker.WaitContainerRunning(ctx, container.ID); err != nil {
+			return fmt.Errorf("wait for container to be running: %w", err)
+		}
+		d.Log.Infof("container %s is now running", container.ID)
+	}
+
 	args := []string{"exec"}
 	if stdin != nil {
 		args = append(args, "-i")

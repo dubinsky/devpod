@@ -13,6 +13,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"github.com/skevetter/devpod/pkg/config"
+	"github.com/skevetter/devpod/pkg/docker"
 	"github.com/skevetter/devpod/pkg/inject"
 	"github.com/skevetter/devpod/pkg/shell"
 	"github.com/skevetter/devpod/pkg/version"
@@ -191,6 +192,10 @@ func InjectAgent(opts *InjectOptions) error {
 	opts.Log.Debug("starting agent injection")
 	return retry.OnError(backoff, func(err error) bool {
 		if opts.Ctx.Err() != nil {
+			return false
+		}
+		if errors.Is(err, docker.ErrContainerTerminal) {
+			opts.Log.Errorf("container entered a terminal state, not retrying: %v", err)
 			return false
 		}
 		opts.Log.Debugf("retrying injection: %v", err)
