@@ -140,6 +140,36 @@ var _ = ginkgo.Describe("devpod ssh test suite", ginkgo.Label("ssh"), ginkgo.Ord
 			).Run()
 			framework.ExpectNoError(err)
 
+			agentOut, err := exec.Command("ssh-agent", "-s").Output()
+			framework.ExpectNoError(err)
+			t := ginkgo.GinkgoT()
+			var agentPID string
+			for line := range strings.SplitSeq(string(agentOut), "\n") {
+				for _, prefix := range []string{"SSH_AUTH_SOCK=", "SSH_AGENT_PID="} {
+					if _, after, ok := strings.Cut(line, prefix); ok {
+						val := after
+						if semi := strings.Index(val, ";"); semi >= 0 {
+							val = val[:semi]
+						}
+						key := prefix[:len(prefix)-1]
+						if key == "SSH_AGENT_PID" {
+							agentPID = val
+						}
+						t.Setenv(key, val)
+					}
+				}
+			}
+			ginkgo.DeferCleanup(func(_ context.Context) {
+				if agentPID != "" {
+					// #nosec G204 -- controlled pid from ssh-agent we started
+					_ = exec.Command("kill", agentPID).Run()
+				}
+			})
+
+			// #nosec G204 -- test command with controlled arguments
+			err = exec.Command("ssh-add", keyPath).Run()
+			framework.ExpectNoError(err)
+
 			// Start workspace with git-ssh-signing-key flag
 			err = f.DevPodUp(ctx, tempDir, "--git-ssh-signing-key", keyPath+".pub")
 			framework.ExpectNoError(err)
@@ -162,6 +192,11 @@ var _ = ginkgo.Describe("devpod ssh test suite", ginkgo.Label("ssh"), ginkgo.Ord
 				"echo test > testfile",
 				"git add testfile",
 				"git commit -m 'signed test commit' 2>&1",
+				"ssh-add -L | head -1 > /tmp/test_signing_key.pub",
+				"git config --global user.signingkey /tmp/test_signing_key.pub",
+				"echo world >> file.txt",
+				"git add file.txt",
+				"git commit -m 'signed commit with file path key' 2>&1",
 			}, " && ")
 
 			// The signing key must be passed on each SSH invocation so the
