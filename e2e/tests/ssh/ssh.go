@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/onsi/ginkgo/v2"
@@ -30,6 +31,7 @@ var _ = ginkgo.Describe("devpod ssh test suite", ginkgo.Label("ssh"), ginkgo.Ord
 
 	ginkgo.It(
 		"should start a new workspace with a docker provider (default) and SSH into it",
+		ginkgo.SpecTimeout(framework.GetTimeout()),
 		func(ctx context.Context) {
 			tempDir, err := framework.CopyToTempDir("tests/ssh/testdata/local-test")
 			framework.ExpectNoError(err)
@@ -59,54 +61,6 @@ var _ = ginkgo.Describe("devpod ssh test suite", ginkgo.Label("ssh"), ginkgo.Ord
 		},
 	)
 
-	// ginkgo.It("should start a new workspace with a docker provider (default) and forward gpg agent into it", func() {
-	// 	// skip windows for now
-	// 	if runtime.GOOS == osWindows {
-	// 		return
-	// 	}
-	//
-	// 	tempDir, err := framework.CopyToTempDir("tests/ssh/testdata/gpg-forwarding")
-	// 	framework.ExpectNoError(err)
-	// 	defer framework.CleanupTempDir(initialDir, tempDir)
-	//
-	// 	f := framework.NewDefaultFramework(initialDir + "/bin")
-	// 	_ = f.DevPodProviderAdd(ctx, "docker")
-	// 	err = f.DevPodProviderUse(context.Background(), "docker")
-	// 	framework.ExpectNoError(err)
-	//
-	// 	ginkgo.DeferCleanup(f.DevPodWorkspaceDelete, context.Background(), tempDir)
-	//
-	// 	out, err := exec.Command("gpg", "-k").Output()
-	// 	if err != nil || len(out) == 0 {
-	// 		err = f.SetupGPG(tempDir)
-	// 		framework.ExpectNoError(err)
-	// 	}
-	//
-	// 	// Start up devpod workspace
-	// 	devpodUpDeadline := time.Now().Add(5 * time.Minute)
-	// 	devpodUpCtx, cancel := context.WithDeadline(context.Background(), devpodUpDeadline)
-	// 	defer cancel()
-	// 	err = f.DevPodUp(devpodUpCtx, tempDir, "--gpg-agent-forwarding")
-	// 	framework.ExpectNoError(err)
-	//
-	// 	devpodSSHDeadline := time.Now().Add(20 * time.Second)
-	// 	devpodSSHCtx, cancelSSH := context.WithDeadline(context.Background(), devpodSSHDeadline)
-	// 	defer cancelSSH()
-	//
-	// 	// GPG agent might be not ready, let's try 10 times, 1 second each
-	// 	retries := 10
-	// 	for retries > 0 {
-	// 		err = f.DevPodSSHGpgTestKey(devpodSSHCtx, tempDir)
-	// 		if err != nil {
-	// 			retries--
-	// 			time.Sleep(time.Second)
-	// 		} else {
-	// 			break
-	// 		}
-	// 	}
-	// 	framework.ExpectNoError(err)
-	// })
-
 	ginkgo.It(
 		"should set up git SSH signature helper and sign a commit",
 		ginkgo.SpecTimeout(7*time.Minute),
@@ -131,7 +85,7 @@ var _ = ginkgo.Describe("devpod ssh test suite", ginkgo.Label("ssh"), ginkgo.Ord
 			// Generate a temporary SSH key for signing
 			sshKeyDir, err := os.MkdirTemp("", "devpod-ssh-signing-test")
 			framework.ExpectNoError(err)
-			defer func() { _ = os.RemoveAll(sshKeyDir) }()
+			ginkgo.DeferCleanup(func() { _ = os.RemoveAll(sshKeyDir) })
 
 			keyPath := filepath.Join(sshKeyDir, "id_ed25519")
 			// #nosec G204 -- test command with controlled arguments
@@ -341,7 +295,7 @@ var _ = ginkgo.Describe("devpod ssh test suite", ginkgo.Label("ssh"), ginkgo.Ord
 			// Generate a key but do NOT add it to the ssh-agent so signing will fail
 			sshKeyDir, err := os.MkdirTemp("", "devpod-ssh-signing-err-test")
 			framework.ExpectNoError(err)
-			defer func() { _ = os.RemoveAll(sshKeyDir) }()
+			ginkgo.DeferCleanup(func() { _ = os.RemoveAll(sshKeyDir) })
 
 			keyPath := filepath.Join(sshKeyDir, "id_ed25519")
 			// #nosec G204 -- test command with controlled arguments
@@ -394,6 +348,7 @@ var _ = ginkgo.Describe("devpod ssh test suite", ginkgo.Label("ssh"), ginkgo.Ord
 
 	ginkgo.It(
 		"should start a new workspace with a docker provider (default) and forward a port into it",
+		ginkgo.SpecTimeout(framework.GetTimeout()),
 		func(ctx context.Context) {
 			if runtime.GOOS == osWindows {
 				ginkgo.Skip("skipping on windows")
@@ -433,12 +388,10 @@ var _ = ginkgo.Describe("devpod ssh test suite", ginkgo.Label("ssh"), ginkgo.Ord
 			)
 			err = serverCmd.Start()
 			framework.ExpectNoError(err)
-			go func() {
+			var wg sync.WaitGroup
+			wg.Go(func() {
 				_ = serverCmd.Wait()
-			}()
-
-			ginkgo.GinkgoWriter.Println("Waiting for server to start")
-			time.Sleep(3 * time.Second)
+			})
 
 			portForwardCtx, cancelPort := context.WithTimeout(
 				ctx,
@@ -447,9 +400,14 @@ var _ = ginkgo.Describe("devpod ssh test suite", ginkgo.Label("ssh"), ginkgo.Ord
 			defer cancelPort()
 
 			ginkgo.GinkgoWriter.Println("Starting port forwarding for port", port)
-			go func() {
+			wg.Go(func() {
 				_ = f.DevpodPortTest(portForwardCtx, strconv.Itoa(port), tempDir)
-			}()
+			})
+			ginkgo.DeferCleanup(func() {
+				serverCancel()
+				cancelPort()
+				wg.Wait()
+			})
 
 			ginkgo.GinkgoWriter.Println("Polling for port", port, "to be accessible")
 			address := net.JoinHostPort("localhost", strconv.Itoa(port))

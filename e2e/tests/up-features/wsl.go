@@ -29,6 +29,7 @@ var _ = ginkgo.Describe(
 
 		ginkgo.It("should use http headers to download feature", func(ctx context.Context) {
 			server := ghttp.NewServer()
+			ginkgo.DeferCleanup(server.Close)
 
 			tempDir, err := framework.CopyToTempDir(
 				"tests/up-features/testdata/docker-features-http-headers",
@@ -51,7 +52,6 @@ var _ = ginkgo.Describe(
 			framework.ExpectNoError(err)
 
 			ginkgo.DeferCleanup(framework.CleanupTempDir, initialDir, tempDir)
-			ginkgo.DeferCleanup(server.Close)
 
 			respHeader := http.Header{}
 			respHeader.Set(
@@ -77,12 +77,11 @@ var _ = ginkgo.Describe(
 			err = f.DevPodProviderUse(ctx, "docker")
 			framework.ExpectNoError(err)
 
-			ginkgo.DeferCleanup(f.DevPodWorkspaceDelete, context.Background(), tempDir)
+			ginkgo.DeferCleanup(f.DevPodWorkspaceDelete, tempDir)
 
 			// Wait for devpod workspace to come online (deadline: 30s)
 			err = f.DevPodUp(ctx, tempDir)
 			framework.ExpectNoError(err)
-			server.Close()
 		}, ginkgo.SpecTimeout(framework.GetTimeout()))
 
 		ginkgo.It(
@@ -98,7 +97,7 @@ var _ = ginkgo.Describe(
 				ginkgo.DeferCleanup(framework.CleanupTempDir, initialDir, tempDir)
 
 				workspaceName := filepath.Base(tempDir)
-				ginkgo.DeferCleanup(f.DevPodWorkspaceDelete, context.Background(), workspaceName)
+				ginkgo.DeferCleanup(f.DevPodWorkspaceDelete, workspaceName)
 
 				// Wait for devpod workspace to come online (deadline: 30s)
 				err = f.DevPodUp(ctx, tempDir, "--debug")
